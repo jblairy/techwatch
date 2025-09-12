@@ -1,0 +1,13 @@
+[Unit]
+Description=Service de veille technologique Python
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/veille
+ExecStart=%h/veille/scripts/start_veille.sh
+Restart=on-failure
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=default.target

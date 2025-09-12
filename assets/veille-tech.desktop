@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Veille Technologique
+Comment=Outil de veille technologique avec interface moderne
+Exec=/home/jblairy/veille/.venv/bin/python /home/jblairy/veille/gui_main.py
+Icon=/home/jblairy/veille/assets/icon.png
+Terminal=false
+Categories=Development;Network;
+Keywords=veille;php;symfony;
+StartupNotify=true
+StartupWMClass=gui_main
+Path=/home/jblairy/veille
+

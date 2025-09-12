@@ -1,0 +1,15 @@
+[Unit]
+Description=Service de veille technologique Python (console) - Mode continu
+After=network.target
+
+[Service]
+Type=simple
+User=jblairy
+WorkingDirectory=/home/jblairy/veille
+ExecStart=/home/jblairy/veille/.venv/bin/python veille_service.py --continuous --interval 1 --silent
+Restart=on-failure
+RestartSec=60
+Environment=PYTHONPATH=/home/jblairy/veille
+
+[Install]
+WantedBy=multi-user.target
