@@ -36,14 +36,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     rm -rf var/logs
 fi
 
-# Remove configuration files (optional - ask user)
-read -p "Remove configuration files? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "🗑️ Removing configuration files..."
-    rm -rf config
-fi
-
 echo ""
 echo "✅ Uninstallation completed!"
 echo ""

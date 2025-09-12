@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=jblairy
-WorkingDirectory=/home/jblairy/veille
-ExecStart=/home/jblairy/veille/.venv/bin/python veille_service.py --continuous --interval 1 --silent
+User={INSTALL_USER}
+WorkingDirectory={INSTALL_DIR}
+ExecStart={INSTALL_DIR}/.venv/bin/python veille_service.py --continuous --interval 1 --silent
 Restart=on-failure
 RestartSec=60
-Environment=PYTHONPATH=/home/jblairy/veille
+Environment=PYTHONPATH={INSTALL_DIR}
 
 [Install]
 WantedBy=multi-user.target

@@ -32,14 +32,20 @@ chmod +x assets/veille-tech.desktop
 mkdir -p var/saves
 
 # Install desktop file for graphical interface
-echo "🖥��� Installing application menu icon..."
+echo "🖥 Installing application menu icon..."
 mkdir -p ~/.local/share/applications
 cp assets/veille-tech.desktop ~/.local/share/applications/
+
+# Replace placeholders in .desktop and .service files with current install path
+INSTALL_DIR="$PWD"
+INSTALL_USER="$(whoami)"
+
+# Prepare veille-tech.desktop
+sed "s|{INSTALL_DIR}|$INSTALL_DIR|g" assets/veille-tech.desktop > ~/.local/share/applications/veille-tech.desktop
 update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 
-# Install system service (console)
-echo "⚙️ Installing system service (console)..."
-sudo cp config/veille.service /etc/systemd/system/
+# Prepare veille.service
+sudo sed "s|{INSTALL_DIR}|$INSTALL_DIR|g; s|{INSTALL_USER}|$INSTALL_USER|g" config/veille.service | sudo tee /etc/systemd/system/veille.service > /dev/null
 sudo systemctl daemon-reload
 sudo systemctl enable veille.service
 
