@@ -14,7 +14,7 @@ systemctl --user disable veille-user.service 2>/dev/null || true
 # Remove system service files
 echo "🗂️ Removing service files..."
 sudo rm -f /etc/systemd/system/veille.service
-rm -f ~/.config/systemd/user/veille-user.service
+rm -f ~/.config/systemd/user/veille-user.service //TODO deprecated ?
 sudo systemctl daemon-reload 2>/dev/null || true
 systemctl --user daemon-reload 2>/dev/null || true
 

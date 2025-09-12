@@ -331,166 +331,84 @@ class TechWatchGUI:
 
             # Using domain services for filtering
             from src.domain.services.post_service import PostFilteringService
-            filtering_service = PostFilteringService()
-
-            filtered_posts = self.current_posts.copy()
-
-            # Date range filtering
-            days_back = self.days_back_var.get()
-            if days_back >= 0:  # -1 = all articles
-                date_range = DateRange.from_days_back(days_back)
-                filtered_posts = filtering_service.filter_by_date_range(filtered_posts, date_range)
-
-            # Source filtering
-            source_filter = self.source_var.get()
-            filtered_posts = filtering_service.filter_by_source(filtered_posts, source_filter)
-
-            # Sort by date
-            filtered_posts = filtering_service.sort_by_date(filtered_posts)
-
-            # Display filtered results
-            self.display_filtered_posts(filtered_posts)
-
-            # Update status
-            total = len(self.current_posts)
-            filtered = len(filtered_posts)
-            self.status_label.configure(text=f"📊 {filtered}/{total} articles displayed")
-
-        except Exception as e:
+        """Apply date and source filters and update the display, with cache and threading"""
+        def filter_and_display():
+            with self.display_lock:
+                if not self.current_posts:
+                    return
+                # Cache key
+                cache_key = (self.days_back_var.get(), self.source_var.get())
+                if cache_key in self.filter_cache:
+                    filtered_posts = self.filter_cache[cache_key]
+                else:
+                    from src.domain.services.post_service import PostFilteringService
+                    filtering_service = PostFilteringService()
+                    filtered_posts = self.current_posts.copy()
+                    days_back = self.days_back_var.get()
+                    if days_back >= 0:
+                        date_range = DateRange.from_days_back(days_back)
+                        filtered_posts = filtering_service.filter_by_date_range(filtered_posts, date_range)
+                    source_filter = self.source_var.get()
+                    filtered_posts = filtering_service.filter_by_source(filtered_posts, source_filter)
+                    filtered_posts = filtering_service.sort_by_date(filtered_posts)
+                    self.filter_cache[cache_key] = filtered_posts
+                self.displayed_batch_index = 0
+                self.displayed_posts = filtered_posts
+                self.status_label.configure(text=f"📊 {len(filtered_posts)}/{len(self.current_posts)} articles displayed")
+                self.display_next_batch()
+        threading.Thread(target=filter_and_display, daemon=True).start()
             logging.error(f"Error filtering: {e}", exc_info=True)
-            self.status_label.configure(text=f"❌ Filtering error: {e}")
-
-    def display_filtered_posts(self, posts: List[Post]):
-        """Display filtered posts in the interface, with alert for sources sans post"""
-        # Clear current display
-        for widget in self.results_main_frame.winfo_children():
-            widget.destroy()
-        self.left_column_row = 0
-        self.right_column_row = 0
-        self.stored_urls.clear()
-
-        # Récupérer toutes les sources attendues
-        sources_attendues = self.source_combo.cget('values')
-        if "All sources" in sources_attendues:
-            sources_attendues = [s for s in sources_attendues if s != "All sources"]
-
-        # Group posts by source
-        posts_by_source = {}
-        for post in posts:
-            source = post.source or "Unknown source"
-            if source not in posts_by_source:
-                posts_by_source[source] = []
-            posts_by_source[source].append(post)
-
-        # Afficher les résultats pour chaque source attendue
-        any_result = False
-        for source in sources_attendues:
-            source_posts = posts_by_source.get(source, [])
-            self.display_posts_for_source(source, source_posts)
-            if source_posts:
-                any_result = True
-        if not any_result:
-            self.show_no_results_message()
-
-    def display_posts_for_source(self, source_name: str, posts: List[Post]):
-        """Display posts from a given source"""
-        # Si aucun post filtré ET aucun post all time, afficher le bloc d'alerte
-        has_alert = hasattr(self, 'source_post_count') and self.source_post_count.get(source_name, 0) == 0
-        if not posts and not has_alert:
-            # Ne rien afficher si pas d'alerte et pas de post filtré
-            return
-        # Create a header for the source
-        source_header = ctk.CTkFrame(self.results_main_frame, corner_radius=8, fg_color=self.colors['primary'])
-        current_row = max(self.left_column_row, self.right_column_row)
-        source_header.grid(row=current_row, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 5))
-
-        # Source title
-        source_label_text = f"📍 {source_name} ({len(posts)} articles)"
-        source_label = ctk.CTkLabel(
-            source_header,
-            text=source_label_text,
-            font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="white"
-        )
-        source_label.pack(pady=10)
-
-        # Affichage de l'alerte non intrusive si le crawler n'a jamais eu de post
-        if has_alert:
-            alert_label = ctk.CTkLabel(
-                source_header,
-                text="⚠️ Aucun article trouvé pour cette source depuis le début. Veuillez vérifier le crawler.",
-                font=ctk.CTkFont(size=13, weight="normal"),
-                text_color=self.colors['warning']
-            )
-            alert_label.pack(pady=(0, 10))
-
-        # Increment row for next cards
-        self.left_column_row = current_row + 1
-        self.right_column_row = current_row + 1
-
-        # Display each post in columns
-        for post in posts:
-            # Determine column (alternating)
-            if self.left_column_row <= self.right_column_row:
-                column = 0
-                row = self.left_column_row
-                self.left_column_row += 1
-            else:
-                column = 1
-                row = self.right_column_row
-                self.right_column_row += 1
-
-            # Create post card
-            post_card = ctk.CTkFrame(self.results_main_frame, corner_radius=8, fg_color="gray15")
-            post_card.grid(row=row, column=column, sticky="ew", padx=10, pady=5)
-
-            # Title with wrapping
-            title_label = ctk.CTkLabel(
-                post_card,
-                text=post.title,
-                font=ctk.CTkFont(size=13, weight="bold"),
-                text_color=self.colors['text'],
-                wraplength=250,  # Limit width for wrapping
-                anchor="w",
-                justify="left"
-            )
-            title_label.pack(anchor="w", padx=12, pady=(12, 8), fill="x")
-
-            # Store URL and create button
-            self.stored_urls.append(post.url)
-
-            # Frame for button and date
-            info_frame = ctk.CTkFrame(post_card, fg_color="transparent")
-            info_frame.pack(fill="x", padx=12, pady=(0, 12))
-
-            link_button = ctk.CTkButton(
-                info_frame,
-                text="🔗 Read article",
-                command=lambda url=post.url: self.open_link(url),
-                font=ctk.CTkFont(size=11),
-                fg_color=self.colors['accent'],
-                hover_color="#2a9fd6",
-                height=28,
-                width=100
-            )
-            link_button.pack(side="left")
-
-            # Display post date
-            if post.date:
-                date_info = ctk.CTkLabel(
-                    info_frame,
-                    text=f"📅 {post.date}",
-                    font=ctk.CTkFont(size=10),
-                    text_color=self.colors['text_secondary']
+    def display_next_batch(self):
+        """Affiche le prochain batch d'articles (affichage progressif, thread safe)"""
+        with self.display_lock:
+            start = self.displayed_batch_index * self.batch_size
+            end = start + self.batch_size
+            batch = self.displayed_posts[start:end]
+            if not batch and self.displayed_batch_index == 0:
+                self.show_no_results_message()
+                return
+            # Clear display uniquement au début
+            if self.displayed_batch_index == 0:
+                for widget in self.results_main_frame.winfo_children():
+                    widget.destroy()
+                self.left_column_row = 0
+                self.right_column_row = 0
+                self.stored_urls.clear()
+            # Affiche le batch
+            sources_attendues = self.source_combo.cget('values')
+            if "All sources" in sources_attendues:
+                sources_attendues = [s for s in sources_attendues if s != "All sources"]
+            posts_by_source = {}
+            for post in batch:
+                source = post.source or "Unknown source"
+                if source not in posts_by_source:
+                    posts_by_source[source] = []
+                posts_by_source[source].append(post)
+            any_result = False
+            for source in sources_attendues:
+                source_posts = posts_by_source.get(source, [])
+                self.display_posts_for_source(source, source_posts)
+                if source_posts:
+                    any_result = True
+            if not any_result and self.displayed_batch_index == 0:
+                self.show_no_results_message()
+            # Affichage du bouton "Afficher plus" si batch incomplet
+            if end < len(self.displayed_posts):
+                show_more_btn = ctk.CTkButton(
+                    self.results_main_frame,
+                    text="Afficher plus d'articles",
+                    command=self.load_more_batch,
+                    font=ctk.CTkFont(size=14),
+                    fg_color=self.colors['accent'],
+                    hover_color="#2a9fd6"
                 )
-                date_info.pack(side="right", padx=(10, 0))
-
-    def show_welcome_message(self):
-        """Display the modern welcome message - only if no data is loaded"""
-        # Do not show welcome message if data is already loaded
-        if hasattr(self, 'current_posts') and self.current_posts:
-            return
-
+                show_more_btn.grid(row=max(self.left_column_row, self.right_column_row)+1, column=0, columnspan=2, pady=20)
+                    text_color=self.colors['text_secondary']
+    def load_more_batch(self):
+        """Charge le batch suivant d'articles"""
+        with self.display_lock:
+            self.displayed_batch_index += 1
+            self.display_next_batch()
         # Clear previous content of status_frame only
         for widget in self.status_frame.winfo_children():
             widget.destroy()
@@ -711,6 +629,36 @@ class TechWatchGUI:
         # Start generation in a separate thread to avoid blocking the interface
         generation_thread = threading.Thread(target=run_generation, daemon=True)
         generation_thread.start()
+
+    def display_filtered_posts(self, posts: List[Post]):
+        """Display filtered posts in the interface, with alert for sources sans post (affichage progressif)"""
+        # Clear current display only at the start of a batch
+        if self.displayed_batch_index == 0:
+            for widget in self.results_main_frame.winfo_children():
+                widget.destroy()
+            self.left_column_row = 0
+            self.right_column_row = 0
+            self.stored_urls.clear()
+        # Récupérer toutes les sources attendues
+        sources_attendues = self.source_combo.cget('values')
+        if "All sources" in sources_attendues:
+            sources_attendues = [s for s in sources_attendues if s != "All sources"]
+        # Group posts by source
+        posts_by_source = {}
+        for post in posts:
+            source = post.source or "Unknown source"
+            if source not in posts_by_source:
+                posts_by_source[source] = []
+            posts_by_source[source].append(post)
+        # Afficher les résultats pour chaque source attendue
+        any_result = False
+        for source in sources_attendues:
+            source_posts = posts_by_source.get(source, [])
+            self.display_posts_for_source(source, source_posts)
+            if source_posts:
+                any_result = True
+        if not any_result and self.displayed_batch_index == 0:
+            self.show_no_results_message()
 
 def main():
     """Entry point of the modern GUI application"""
