@@ -663,17 +663,17 @@ class TechWatchGUI:
         doc_note.pack(pady=(0, 10), padx=12, anchor="w")
 
     def display_posts_for_source(self, source, posts):
-        """Display all posts for a given source in the results area, in the correct column."""
+        """Affiche tous les posts pour une source donnée dans la zone de résultats, dans la bonne colonne."""
         if not posts:
-            return  # Nothing to display for this source
-        # Add a label for the source
+            return  # Rien à afficher pour cette source
+        # Ajout du label de la source
         source_label = ctk.CTkLabel(
             self.results_main_frame,
             text=f"📰 {source}",
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=self.colors['accent']
         )
-        # Alternate columns: left for even, right for odd sources
+        # Alternance des colonnes : gauche pour pair, droite pour impair
         col = 0 if self.left_column_row <= self.right_column_row else 1
         row = self.left_column_row if col == 0 else self.right_column_row
         source_label.grid(row=row, column=col, sticky="w", padx=10, pady=(10, 2))
@@ -681,11 +681,11 @@ class TechWatchGUI:
             self.left_column_row += 1
         else:
             self.right_column_row += 1
-        # Display each post under the source label
+        # Affichage de chaque post sous le label source
         for post in posts:
             post_frame = ctk.CTkFrame(self.results_main_frame, corner_radius=8, fg_color="gray15")
             post_frame.grid(row=(self.left_column_row if col == 0 else self.right_column_row), column=col, sticky="ew", padx=10, pady=4)
-            # Title
+            # Titre
             title_label = ctk.CTkLabel(
                 post_frame,
                 text=post.title,
@@ -693,7 +693,7 @@ class TechWatchGUI:
                 text_color=self.colors['text']
             )
             title_label.pack(anchor="w", padx=8, pady=(6, 2))
-            # Date and source
+            # Date et source
             meta_label = ctk.CTkLabel(
                 post_frame,
                 text=f"{post.date} • {post.source}",
@@ -701,11 +701,13 @@ class TechWatchGUI:
                 text_color=self.colors['text_secondary']
             )
             meta_label.pack(anchor="w", padx=8, pady=(0, 2))
-            # Link button
+            # Boutons d'action (Open + Copy URL)
             if post.url:
+                btn_frame = ctk.CTkFrame(post_frame, fg_color="transparent")
+                btn_frame.pack(anchor="w", padx=8, pady=(0, 6))
                 link_btn = ctk.CTkButton(
-                    post_frame,
-                    text="🔗 Open Article",
+                    btn_frame,
+                    text="🔗 Ouvrir l'article",
                     command=lambda url=post.url: self.open_link(url),
                     font=ctk.CTkFont(size=12),
                     fg_color=self.colors['accent'],
@@ -713,12 +715,41 @@ class TechWatchGUI:
                     height=28,
                     width=120
                 )
-                link_btn.pack(anchor="w", padx=8, pady=(0, 6))
-            # Increment row for next post
+                link_btn.pack(side="left", padx=(0, 8))
+                copy_btn = ctk.CTkButton(
+                    btn_frame,
+                    text="📋 Copier l'URL",
+                    command=lambda url=post.url: self.copy_to_clipboard(url),
+                    font=ctk.CTkFont(size=12),
+                    fg_color=self.colors['primary'],
+                    hover_color=self.colors['secondary'],
+                    height=28,
+                    width=120
+                )
+                copy_btn.pack(side="left")
+            # Incrémentation de la ligne pour le prochain post
             if col == 0:
                 self.left_column_row += 1
             else:
                 self.right_column_row += 1
+
+    def copy_to_clipboard(self, url):
+        """Copie l'URL dans le presse-papier et affiche une notification."""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(url)
+            self.root.update()  # Nécessaire pour que le presse-papier soit mis à jour
+            self.status_label.configure(text="✅ URL copiée dans le presse-papier")
+            try:
+                notification.notify(
+                    title="URL copiée",
+                    message=url,
+                    timeout=3
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            self.status_label.configure(text=f"❌ Erreur copie: {e}")
 
     def handle_exception(self, exception_type, exception_value, exception_traceback):
         """Exception handling in the Tkinter interface"""

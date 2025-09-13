@@ -11,6 +11,7 @@ Modern technology watch tool respecting Hexagonal Architecture and Domain Driven
 
 - [ ] Add support for Plyers notification (https://github.com/kivy/plyer) (Problem with docker and local installation)
 - [ ] Add support for directory path installation, actually accept the home user path
+- [ ] Fix open link button, it doesn't work since the app is running in a container because the browser is not installed in the container
 
 ## 🏗️ Architecture
 
