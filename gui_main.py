@@ -595,36 +595,72 @@ class TechWatchGUI:
             self.show_no_results_message()
 
     def show_welcome_message(self):
-        """Display documentation about auto-update and manual generation in the status_frame."""
+        """Display a modern welcome/info card about auto-update and manual generation in the status_frame."""
         for widget in self.status_frame.winfo_children():
             widget.destroy()
-        doc_card = ctk.CTkFrame(self.status_frame, corner_radius=10, fg_color="gray20")
-        doc_card.pack(fill="x", padx=10, pady=10)
+        doc_card = ctk.CTkFrame(self.status_frame, corner_radius=14, fg_color=self.colors['secondary'])
+        doc_card.pack(fill="x", padx=18, pady=18)
 
+        # Main title
         doc_title = ctk.CTkLabel(
             doc_card,
-            text="🛠️ Techwatch Auto-Update & Manual Generation",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            text="🚀 Techwatch Auto-Update & Manual Generation",
+            font=ctk.CTkFont(size=22, weight="bold"),
             text_color=self.colors['text']
         )
-        doc_title.pack(pady=(15, 10))
+        doc_title.pack(pady=(18, 8))
 
-        doc_desc = ctk.CTkLabel(
+        # Subtitle
+        doc_subtitle = ctk.CTkLabel(
             doc_card,
-            text="You can enable automatic periodic updates by running:\n\nmake install.autoupdate MINUTES=<N>\n\nor\n\nbash scripts/install.sh --autoupdate <N>\n\nThis will launch the GUI automatically every N minutes.\n\nIf you prefer manual updates, simply click the 'Generate New Data' button below to refresh the results on demand.",
-            font=ctk.CTkFont(size=14),
-            text_color=self.colors['text_secondary'],
+            text="Stay up-to-date automatically or generate new data on demand!",
+            font=ctk.CTkFont(size=16, weight="normal"),
+            text_color=self.colors['accent']
+        )
+        doc_subtitle.pack(pady=(0, 12))
+
+        # Features list
+        features = [
+            ("⏰", "Automatic periodic updates with cron job (autoupdate)"),
+            ("🖱️", "Manual data generation with the 'Generate New Data' button"),
+            ("🔔", "Desktop notifications for new articles"),
+            ("📊", "Unified JSON database for all results"),
+            ("🛡️", "Robust logging and error handling")
+        ]
+        for icon, text in features:
+            feature_label = ctk.CTkLabel(
+                doc_card,
+                text=f"{icon}  {text}",
+                font=ctk.CTkFont(size=14),
+                text_color=self.colors['text_secondary'],
+                anchor="w",
+                justify="left"
+            )
+            feature_label.pack(pady=(2, 2), padx=12, anchor="w")
+
+        # Instructions block
+        instructions = (
+            "\nTo enable auto-update, run:\n"
+            "   make install.autoupdate MINUTES=<N>\n\n"
+            "To generate data manually, click the 'Generate New Data' button below.\n"
+        )
+        doc_instructions = ctk.CTkLabel(
+            doc_card,
+            text=instructions,
+            font=ctk.CTkFont(size=13),
+            text_color=self.colors['accent'],
             justify="left"
         )
-        doc_desc.pack(pady=(0, 10))
+        doc_instructions.pack(pady=(10, 6), padx=12, anchor="w")
 
+        # Note
         doc_note = ctk.CTkLabel(
             doc_card,
-            text="No cron job is installed unless you use the autoupdate option.",
+            text="⚠️ No cron job is installed unless you use the autoupdate option.",
             font=ctk.CTkFont(size=12),
-            text_color=self.colors['text_secondary']
+            text_color=self.colors['warning']
         )
-        doc_note.pack(pady=(0, 10))
+        doc_note.pack(pady=(0, 10), padx=12, anchor="w")
 
     def display_posts_for_source(self, source, posts):
         """Display all posts for a given source in the results area, in the correct column."""
