@@ -32,6 +32,11 @@ done
 mkdir -p "$HOME/.local/bin"
 mkdir -p "$HOME/.local/share/icons"
 mkdir -p "$HOME/.local/share/applications"
+mkdir -p "$HOME/techwatch/var/logs"
+mkdir -p "$HOME/techwatch/var/saves"
+
+sudo chown -R $(id -u):$(id -g) "$HOME/techwatch/var/logs"
+sudo chown -R $(id -u):$(id -g) "$HOME/techwatch/var/saves"
 
 # --- Docker image build ---
 if ! command -v docker &> /dev/null; then
