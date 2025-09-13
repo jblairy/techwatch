@@ -94,20 +94,20 @@ docker run -d --rm \
     techwatch-gui
 
 # --- Remove previous cron jobs ---
-CRON_FILE="/etc/cron.d/techwatch-gui"
+CRON_FILE="/etc/cron.d/techwatch"
 if [ -f "$CRON_FILE" ]; then
     sudo rm -f "$CRON_FILE"
 fi
 CRON_MARKER="# TECHWATCH_CRON"
 (crontab -l 2>/dev/null | grep -v "$CRON_MARKER") | crontab -
-# --- Install cron job in /etc/cron.d for periodic GUI launch ---
+# --- Install cron job in /etc/cron.d for periodic database update ---
 if [[ -n "$AUTO_UPDATE_MINUTES" ]]; then
-    CRON_FILE="/etc/cron.d/techwatch-gui"
+    CRON_FILE="/etc/cron.d/techwatch"
     CRON_MARKER="# TECHWATCH_CRON"
-    CRON_CMD="*/$AUTO_UPDATE_MINUTES * * * * $USER DISPLAY=$DISPLAY PROJECT_DIR=$HOME/techwatch docker run --rm --name techwatch-gui-app -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME/techwatch:/app techwatch-gui python gui_main.py $CRON_MARKER"
+    CRON_CMD="*/$AUTO_UPDATE_MINUTES * * * * $USER cd $HOME/techwatch && docker run --rm --name techwatch-service -v $HOME/techwatch:/app techwatch-gui python techwatch_service.py $CRON_MARKER"
     echo "$CRON_CMD" | sudo tee "$CRON_FILE" > /dev/null
     sudo chmod 644 "$CRON_FILE"
-    echo "Cron job installed in /etc/cron.d/techwatch-gui: Techwatch GUI will launch every $AUTO_UPDATE_MINUTES minute(s)."
+    echo "Cron job installed in /etc/cron.d/techwatch: Techwatch database will update every $AUTO_UPDATE_MINUTES minute(s)."
 else
     echo "No autoupdate cron job installed (use --autoupdate <minutes> to enable)."
 fi

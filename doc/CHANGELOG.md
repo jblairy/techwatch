@@ -142,7 +142,7 @@ var/saves/
 
 ## Cron Job Integration & Auto-Update
 
-Techwatch now supports automated periodic launching of the GUI via Docker using a cron job. This is managed by the install and uninstall scripts.
+Techwatch now supports automatic database updates via a Docker cron job. The cron job does not launch the graphical interface, but runs the `techwatch_service.py` service at regular intervals to ensure continuous technology monitoring.
 
 ### How to use
 - To enable auto-update, use the install script with the flag `--autoupdate <minutes>` or the Makefile target:
@@ -153,7 +153,10 @@ Techwatch now supports automated periodic launching of the GUI via Docker using 
   ```
   make install.autoupdate MINUTES=5
   ```
-- This creates a cron job in `/etc/cron.d/techwatch-gui` that launches the GUI container every N minutes.
+- This creates a cron job in `/etc/cron.d/techwatch-gui` that runs the database update every N minutes via:
+  ```
+  cd $HOME/techwatch && docker run --rm --name techwatch-service -v $HOME/techwatch:/app techwatch-gui python techwatch_service.py
+  ```
 - To uninstall and remove the cron job:
   ```
   bash scripts/uninstall.sh
@@ -164,8 +167,10 @@ Techwatch now supports automated periodic launching of the GUI via Docker using 
   ```
 
 ### Details
-- The cron job is robust, uses the current user's environment, and is automatically removed on uninstall.
+- The cron job does not require any graphical environment (no DISPLAY/X11/Wayland).
+- It runs in the background and does not display any user interface.
 - No cron job is installed if the flag is omitted.
+- The cron job is robust and automatically removed during uninstallation.
 
 ---
 

@@ -276,36 +276,19 @@ The Techwatch GUI is launched in a Docker container and relies on X11 for graphi
 ## Cron Job Architecture & Auto-Update Feature
 
 ### Concept
-Techwatch can be configured to auto-launch the GUI container at a regular interval using a cron job. This is managed via the install script and Makefile.
+Techwatch can be configured to automatically update its database via a Docker cron job. The cron job does not launch the GUI, but runs the `techwatch_service.py` service at regular intervals to ensure continuous technology monitoring.
 
 ### How it works
-- The install script supports a flag `--autoupdate <minutes>` to enable periodic launching.
-- If provided, a cron job is created in `/etc/cron.d/techwatch-gui` to launch the GUI container every N minutes.
-- The uninstall script removes this cron job automatically.
+- The install script accepts the `--autoupdate <minutes>` flag to enable periodic updates.
+- If this flag is provided, a cron job is created in `/etc/cron.d/techwatch-gui` to run the database update every N minutes:
+  ```
+  cd $HOME/techwatch && docker run --rm --name techwatch-service -v $HOME/techwatch:/app techwatch-gui python techwatch_service.py
+  ```
+- The uninstall script automatically removes this cron job.
 
-### Usage
-- Install with auto-update every 5 minutes:
-  ```
-  bash scripts/install.sh --autoupdate 5
-  ```
-  or
-  ```
-  make install.autoupdate MINUTES=5
-  ```
-- Uninstall and remove the cron job:
-  ```
-  bash scripts/uninstall.sh
-  ```
-  or
-  ```
-  make uninstall
-  ```
-
-### Technical Details
-- The cron job is written to `/etc/cron.d/techwatch-gui` and uses the current user's environment.
-- The frequency is fully configurable via the flag or Makefile variable.
-- No cron job is installed if the flag is omitted.
-- The cron job is robust and automatically removed on uninstall.
+- Il fonctionne en arrière-plan et n'affiche pas d'interface utilisateur.
+- Aucun cron job n'est installé si le flag est omis.
+- Le cron job est robuste et automatiquement supprimé lors de la désinstallation.
 
 ---
 

@@ -53,10 +53,11 @@ CRON_MARKER="# TECHWATCH_CRON"
 echo "Techwatch crontab entry removed."
 
 # --- Remove cron job from /etc/cron.d ---
-CRON_FILE="/etc/cron.d/techwatch-gui"
+CRON_FILE="/etc/cron.d/techwatch"
 if [ -f "$CRON_FILE" ]; then
     sudo rm -f "$CRON_FILE"
-    echo "Cron job /etc/cron.d/techwatch-gui removed."
+    echo "Cron job /etc/cron.d/techwatch removed."
 fi
 
 echo "Techwatch application uninstallation complete."
+
