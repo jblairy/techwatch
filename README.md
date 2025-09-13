@@ -7,6 +7,10 @@
 
 Modern technology watch tool respecting Hexagonal Architecture and Domain Driven Design (DDD) principles to track news from various technical sources.
 
+## TODO
+
+- [ ] Add support for Plyers notification (https://github.com/kivy/plyer) (Problem with docker and local installation)
+
 ## 🏗️ Architecture
 
 The project uses **Hexagonal Architecture DDD** for clear separation of responsibilities:
