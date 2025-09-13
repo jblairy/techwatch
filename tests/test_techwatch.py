@@ -9,7 +9,7 @@ from datetime import date
 # Import new DDD classes
 from src.domain.entities.post import Post
 from src.domain.value_objects.date_range import DateRange
-from src.application.services.veille_service import TechWatchService
+from src.application.services.techwatch_service import TechWatchService
 from src.presentation.cli.console_renderer import ConsoleRenderer
 
 

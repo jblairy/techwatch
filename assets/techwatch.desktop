@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TechWatch
+Comment=Technology Watch Tool
+Exec=bash -c 'TECHWATCH_PROJECT_DIR="$HOME/techwatch" XAUTHORITY="$XAUTHORITY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" DISPLAY="$DISPLAY" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" $HOME/techwatch/scripts/start_techwatch_gui.sh'
+Icon=techwatch.png
+Terminal=false
+Categories=Development;Network;
+Keywords=veille;php;symfony;techwatch;
+StartupNotify=true

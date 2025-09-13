@@ -1,76 +1,115 @@
 #!/bin/bash
-# Automatic installation script for the technology watch tool
+# Clean install script for Techwatch desktop app
 set -e
 
-echo "🚀 Installing technology watch tool..."
+# --- Options ---
+REBUILD=0
+AUTO_UPDATE_MINUTES=""
+ARGS=("$@")
+for ((i=0; i<$#; i++)); do
+    arg="${ARGS[$i]}"
+    if [[ "$arg" == "--rebuild" || "$arg" == "-r" ]]; then
+        REBUILD=1
+    elif [[ "$arg" == "--autoupdate" ]]; then
+        next_index=$((i+1))
+        if [[ $next_index -lt $# ]]; then
+            value="${ARGS[$next_index]}"
+            if [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+                AUTO_UPDATE_MINUTES="$value"
+            else
+                echo "Error: --autoupdate requires a positive integer value (minutes)." >&2
+                exit 3
+            fi
+        else
+            echo "Error: --autoupdate flag requires a value (minutes)." >&2
+            exit 3
+        fi
+    fi
+    # Add other options here if needed
+done
 
-# Check for Python 3.13 presence
-if ! command -v python3.13 &> /dev/null; then
-    echo "❌ Python 3.13 is not installed. Please install it before continuing."
+# --- Create all needed directories ---
+mkdir -p "$HOME/.local/bin"
+mkdir -p "$HOME/.local/share/icons"
+mkdir -p "$HOME/.local/share/applications"
+
+# --- Docker image build ---
+if ! command -v docker &> /dev/null; then
+    echo "Docker is not installed. Please install it before continuing."
     exit 1
 fi
+if [[ $REBUILD -eq 1 ]]; then
+    echo "--rebuild option detected: forcing rebuild of Docker image techwatch-gui..."
+    docker build --no-cache -t techwatch-gui .
+else
+    if ! docker image inspect techwatch-gui &> /dev/null; then
+        echo "Building Docker image techwatch-gui..."
+        docker build -t techwatch-gui .
+    else
+        echo "Docker image techwatch-gui already present."
+    fi
+fi
 
-# Create virtual environment
-echo "📦 Creating virtual environment..."
-python3.13 -m venv .venv
+# --- X11 preparation ---
+if [ -z "$DISPLAY" ]; then
+    echo "The DISPLAY variable is not set. Unable to display the graphical application."
+    exit 2
+fi
+xhost +local:docker &> /dev/null || true
 
-# Activate virtual environment
-source .venv/bin/activate
+# --- Install resources ---
+# Launcher script
+cp ./scripts/start_techwatch_gui.sh "$HOME/.local/bin/start_techwatch_gui.sh"
+chmod +x "$HOME/.local/bin/start_techwatch_gui.sh"
 
-# Install dependencies
-echo "📥 Installing dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
+# Icon
+cp ./assets/techwatch.png "$HOME/.local/share/icons/techwatch.png"
 
-# Make scripts executable
-echo "🔧 Configuring scripts..."
-chmod +x scripts/start_veille.sh
-chmod +x scripts/start_veille_console.sh
-chmod +x assets/veille-tech.desktop
+# Desktop file
+cp ./assets/techwatch.desktop "$HOME/.local/share/applications/techwatch.desktop"
+chmod +x "$HOME/.local/share/applications/techwatch.desktop"
 
-# Create save directory
-mkdir -p var/saves
+# --- Update desktop application database ---
+if command -v update-desktop-database &> /dev/null; then
+    update-desktop-database "$HOME/.local/share/applications"
+fi
 
-# Install desktop file for graphical interface
-echo "🖥 Installing application menu icon..."
-mkdir -p ~/.local/share/applications
-cp assets/veille-tech.desktop ~/.local/share/applications/
+# --- User PATH verification ---
+if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+    echo "export PATH=\"$HOME/.local/bin:$PATH\"" >> "$HOME/.bashrc"
+    echo "The ~/.local/bin folder has been added to PATH in ~/.bashrc. Please open a new terminal or restart your session to use it."
+fi
 
-# Replace placeholders in .desktop and .service files with current install path
-INSTALL_DIR="$PWD"
-INSTALL_USER="$(whoami)"
+# --- Docker container management ---
+if docker ps -a --format '{{.Names}}' | grep -w techwatch-gui-app &> /dev/null; then
+    echo "A techwatch-gui-app container already exists. Removing..."
+    docker rm -f techwatch-gui-app
+fi
 
-# Prepare veille-tech.desktop
-sed "s|{INSTALL_DIR}|$INSTALL_DIR|g" assets/veille-tech.desktop > ~/.local/share/applications/veille-tech.desktop
-update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+docker run -d --rm \
+    --name techwatch-gui-app \
+    -e DISPLAY=$DISPLAY \
+    -v /tmp/.X11-unix:/tmp/.X11-unix \
+    -v $PWD:/app \
+    techwatch-gui
 
-# Prepare veille.service
-sudo sed "s|{INSTALL_DIR}|$INSTALL_DIR|g; s|{INSTALL_USER}|$INSTALL_USER|g" config/veille.service | sudo tee /etc/systemd/system/veille.service > /dev/null
-sudo systemctl daemon-reload
-sudo systemctl enable veille.service
+# --- Remove previous cron jobs ---
+CRON_FILE="/etc/cron.d/techwatch-gui"
+if [ -f "$CRON_FILE" ]; then
+    sudo rm -f "$CRON_FILE"
+fi
+CRON_MARKER="# TECHWATCH_CRON"
+(crontab -l 2>/dev/null | grep -v "$CRON_MARKER") | crontab -
+# --- Install cron job in /etc/cron.d for periodic GUI launch ---
+if [[ -n "$AUTO_UPDATE_MINUTES" ]]; then
+    CRON_FILE="/etc/cron.d/techwatch-gui"
+    CRON_MARKER="# TECHWATCH_CRON"
+    CRON_CMD="*/$AUTO_UPDATE_MINUTES * * * * $USER DISPLAY=$DISPLAY PROJECT_DIR=$HOME/techwatch docker run --rm --name techwatch-gui-app -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v $HOME/techwatch:/app techwatch-gui python gui_main.py $CRON_MARKER"
+    echo "$CRON_CMD" | sudo tee "$CRON_FILE" > /dev/null
+    sudo chmod 644 "$CRON_FILE"
+    echo "Cron job installed in /etc/cron.d/techwatch-gui: Techwatch GUI will launch every $AUTO_UPDATE_MINUTES minute(s)."
+else
+    echo "No autoupdate cron job installed (use --autoupdate <minutes> to enable)."
+fi
 
-# Install user service (GUI)
-echo "🎨 Installing user service (GUI)..."
-mkdir -p ~/.config/systemd/user
-cp config/veille-user.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable veille-user.service
-
-echo ""
-echo "✅ Installation completed successfully!"
-echo ""
-echo "📋 Available options:"
-echo "1. Manual GUI: source .venv/bin/activate && python gui_main.py"
-echo "2. Automatic console service: sudo systemctl start veille.service"
-echo "3. Automatic GUI service: systemctl --user start veille-user.service"
-echo "4. Application menu icon: Search for 'Technology Watch'"
-echo ""
-echo "📊 Service status:"
-echo "Console: $(sudo systemctl is-enabled veille.service 2>/dev/null || echo 'not configured')"
-echo "GUI     : $(systemctl --user is-enabled veille-user.service 2>/dev/null || echo 'not configured')"
-echo ""
-echo "📁 Installed structure:"
-echo "  scripts/     - Launch scripts"
-echo "  config/      - Systemd service files"
-echo "  assets/      - Icons and desktop files"
-echo "  var/saves/   - Automatic backups"
+echo "Installation complete. The GUI container is ready. Launch the application via the menu or the start_techwatch_gui.sh script."

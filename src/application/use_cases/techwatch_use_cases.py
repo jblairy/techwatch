@@ -8,12 +8,12 @@ import logging
 from ...domain.entities.post import Post
 from ...domain.value_objects.date_range import DateRange
 from ...domain.repositories.post_repository import PostRepository
-from ..dto.post_dto import VeilleResultDTO, PostDTO
+from ..dto.post_dto import ResultDTO, PostDTO
 
 logger = logging.getLogger(__name__)
 
 
-class LoadVeilleDataUseCase:
+class LoadDataUseCase:
     """
     Use case for loading technology watch data
     Orchestrates the loading and filtering of posts from the repository
@@ -23,21 +23,21 @@ class LoadVeilleDataUseCase:
         self._post_repository = post_repository
         self.logger = logging.getLogger(__name__)
 
-    def load_latest(self) -> VeilleResultDTO:
+    def load_latest(self) -> ResultDTO:
         """
         Load the latest technology watch data from the unified database.
 
         Returns:
-            VeilleResultDTO: Data transfer object containing posts and metadata
+            ResultDTO: Data transfer object containing posts and metadata
         """
         return self.execute()
 
-    def execute(self, file_path: Optional[str] = None) -> VeilleResultDTO:
+    def execute(self, file_path: Optional[str] = None) -> ResultDTO:
         """
         Execute the load use case (always loads from the unified database).
 
         Returns:
-            VeilleResultDTO: Data transfer object containing posts and metadata
+            ResultDTO: Data transfer object containing posts and metadata
         """
         try:
             posts, metadata = self._post_repository.load_latest()
@@ -45,21 +45,21 @@ class LoadVeilleDataUseCase:
             # Convert domain entities to DTOs
             post_dtos = [PostDTO.from_domain_entity(post) for post in posts]
 
-            return VeilleResultDTO(
+            return ResultDTO(
                 posts=post_dtos,
                 total_count=len(post_dtos),
                 metadata=metadata or {}
             )
 
         except Exception as e:
-            self.logger.error(f"Error loading veille data: {e}")
-            return VeilleResultDTO(
+            self.logger.error(f"Error loading techwatch data: {e}")
+            return ResultDTO(
                 posts=[],
                 total_count=0,
                 metadata={},
             )
 
-    def execute_with_filters(self, days_back: int = -1, source_filter: Optional[str] = None) -> VeilleResultDTO:
+    def execute_with_filters(self, days_back: int = -1, source_filter: Optional[str] = None) -> ResultDTO:
         """
         Execute the load use case with filtering (on the unified database).
 
@@ -68,7 +68,7 @@ class LoadVeilleDataUseCase:
             source_filter: Optional source name to filter by
 
         Returns:
-            VeilleResultDTO: Filtered data transfer object
+            ResultDTO: Filtered data transfer object
         """
         try:
             # Load all data first
@@ -91,22 +91,22 @@ class LoadVeilleDataUseCase:
             # Convert back to DTOs
             filtered_post_dtos = [PostDTO.from_domain_entity(post) for post in posts]
 
-            return VeilleResultDTO(
+            return ResultDTO(
                 posts=filtered_post_dtos,
                 total_count=len(filtered_post_dtos),
                 metadata=result.metadata
             )
 
         except Exception as e:
-            self.logger.error(f"Error filtering veille data: {e}")
-            return VeilleResultDTO(
+            self.logger.error(f"Error filtering techwatch data: {e}")
+            return ResultDTO(
                 posts=[],
                 total_count=0,
                 metadata={},
             )
 
 
-class SaveVeilleDataUseCase:
+class SaveDataUseCase:
     """
     Use case for saving technology watch data
     Orchestrates the persistence of posts to the repository
@@ -136,11 +136,11 @@ class SaveVeilleDataUseCase:
             return success
 
         except Exception as e:
-            self.logger.error(f"Error saving veille data: {e}")
+            self.logger.error(f"Error saving techwatch data: {e}")
             return False
 
 
-class AnalyzeVeilleDataUseCase:
+class AnalyzeDataUseCase:
     """
     Use case for analyzing technology watch data
     Provides statistics and insights about the collected posts
@@ -194,7 +194,7 @@ class AnalyzeVeilleDataUseCase:
             }
 
         except Exception as e:
-            self.logger.error(f"Error analyzing veille data: {e}")
+            self.logger.error(f"Error analyzing techwatch data: {e}")
             return {
                 'total_posts': 0,
                 'sources': {},

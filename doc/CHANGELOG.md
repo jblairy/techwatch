@@ -48,21 +48,21 @@
 **Before modifications**:
 ```
 var/saves/
-├── veille_20250908_094948.csv
-├── veille_20250908_094948.html
-├── veille_20250908_094948.json
-├── veille_20250908_095026.csv
-├── veille_20250908_095026.html
-├── veille_20250908_095026.json
-└── veille_20250908_101301.json
+├── techwatch_20250908_094948.csv
+├── techwatch_20250908_094948.html
+├── techwatch_20250908_094948.json
+├── techwatch_20250908_095026.csv
+├── techwatch_20250908_095026.html
+├── techwatch_20250908_095026.json
+└── techwatch_20250908_101301.json
 ```
 
 **After cleanup**:
 ```
 var/saves/
-├── veille_20250908_094948.json
-├── veille_20250908_095026.json
-└── veille_20250908_101301.json
+├── techwatch_20250908_094948.json
+├── techwatch_20250908_095026.json
+└── techwatch_20250908_101301.json
 ```
 
 #### 🔄 Migration Process
@@ -137,6 +137,35 @@ var/saves/
 - **Save time**: ~50% faster (single format)
 - **Code complexity**: Reduction of ~100 lines in `SaveService`
 - **Maintenance**: Only one output format to maintain
+
+---
+
+## Cron Job Integration & Auto-Update
+
+Techwatch now supports automated periodic launching of the GUI via Docker using a cron job. This is managed by the install and uninstall scripts.
+
+### How to use
+- To enable auto-update, use the install script with the flag `--autoupdate <minutes>` or the Makefile target:
+  ```
+  bash scripts/install.sh --autoupdate 5
+  ```
+  or
+  ```
+  make install.autoupdate MINUTES=5
+  ```
+- This creates a cron job in `/etc/cron.d/techwatch-gui` that launches the GUI container every N minutes.
+- To uninstall and remove the cron job:
+  ```
+  bash scripts/uninstall.sh
+  ```
+  or
+  ```
+  make uninstall
+  ```
+
+### Details
+- The cron job is robust, uses the current user's environment, and is automatically removed on uninstall.
+- No cron job is installed if the flag is omitted.
 
 ---
 

@@ -17,7 +17,7 @@ import os
 from plyer import notification
 
 # Imports from the new hexagonal DDD architecture
-from src.application.use_cases.veille_use_cases import LoadVeilleDataUseCase
+from src.application.use_cases.techwatch_use_cases import LoadDataUseCase
 from src.application.dto.post_dto import PostDTO, WatchResultDTO
 from src.infrastructure.repositories.json_post_repository import JsonPostRepository
 from src.domain.entities.post import Post
@@ -30,7 +30,7 @@ ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark
 class TechWatchGUI:
     """
     Modern GUI interface for technology watch results consultation.
-    This interface now works with a single, unified database file (veille_db.json).
+    This interface now works with a single, unified database file (techwatch_db.json).
     All articles are loaded from this file, and file selection is no longer required.
     """
 
@@ -63,7 +63,7 @@ class TechWatchGUI:
 
         # Dependency injection - Hexagonal Architecture DDD
         self.post_repository = JsonPostRepository()
-        self.load_use_case = LoadVeilleDataUseCase(self.post_repository)
+        self.load_use_case = LoadDataUseCase(self.post_repository)
 
         # Interface variables
         self.days_back_var = ctk.IntVar(value=0)
@@ -76,6 +76,26 @@ class TechWatchGUI:
         self.current_posts = []
         self.current_metadata = {}
 
+        # Indexes for fast filtering
+        self.index_by_source = {}
+        self.index_by_date = []
+        # LRU cache for filter results
+        from collections import OrderedDict
+        self.filter_cache = OrderedDict()
+        self.cache_max_size = 20
+        # Debounce timer
+        self.debounce_timer = None
+        # Spinner/progress bar
+        self.progress_bar = None
+
+        # Lock for thread-safe display
+        self.display_lock = threading.Lock()
+        # Batch size for progressive rendering
+        self.batch_size = 40  # Default value, can be adjusted
+
+        # Track scheduled after callbacks to avoid TclError
+        self.scheduled_after_ids = []
+
         # Create the interface
         self.create_widgets()
 
@@ -84,6 +104,46 @@ class TechWatchGUI:
 
         # Directly load data from the unified database
         self.load_latest_data()
+
+    def setup_global_logging(self):
+        """Global logging configuration to capture all errors"""
+        import sys
+        # Main logging configuration
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('var/logs/gui_main.log'),
+                logging.StreamHandler()
+            ]
+        )
+        # Handler for uncaught exceptions
+        def handle_exception(exc_type, exc_value, exc_traceback):
+            if issubclass(exc_type, KeyboardInterrupt):
+                sys.__excepthook__(exc_type, exc_value, exc_traceback)
+                return
+            logging.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
+        sys.excepthook = handle_exception
+
+    def setup_logging(self):
+        """Logging configuration for the graphical interface"""
+        class GuiLogHandler(logging.Handler):
+            def __init__(self, gui_instance):
+                super().__init__()
+                self.gui = gui_instance
+
+            def emit(self, record):
+                msg = self.format(record)
+                # Write to GUI log file
+                try:
+                    with open('var/logs/gui_events.log', 'a', encoding='utf-8') as f:
+                        f.write(f"{msg}\n")
+                except Exception:
+                    pass
+
+        gui_handler = GuiLogHandler(self)
+        gui_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(gui_handler)
 
     def create_widgets(self):
         """
@@ -256,42 +316,65 @@ class TechWatchGUI:
         # Welcome message
         self.show_welcome_message()
 
+    def build_indexes(self):
+        """Build indexes for fast filtering (by source, by date)"""
+        self.index_by_source.clear()
+        self.index_by_date.clear()
+        for post in self.current_posts:
+            # Index by source
+            if post.source:
+                self.index_by_source.setdefault(post.source, []).append(post)
+            # Index by date
+            if post.date:
+                self.index_by_date.append(post)
+        self.index_by_date.sort(key=lambda p: p.date)
+
+    def show_spinner(self, message="Chargement..."):
+        if self.progress_bar:
+            self.progress_bar.destroy()
+        self.progress_bar = ctk.CTkLabel(self.results_main_frame, text=message, font=ctk.CTkFont(size=16), text_color=self.colors['accent'])
+        self.progress_bar.grid(row=0, column=0, columnspan=2, pady=20)
+
+    def hide_spinner(self):
+        if self.progress_bar:
+            self.progress_bar.destroy()
+            self.progress_bar = None
+
     def load_latest_data(self):
         """
         Load all articles from the unified database and update the interface.
         """
-        try:
-            # Using the new hexagonal use case
-            result = self.load_use_case.load_latest()
-            if result.posts:
-                # Convert DTOs to entities for display
-                self.current_posts = [dto.to_entity() for dto in result.posts]
-                self.current_metadata = result.metadata
-
-                # Update available sources
-                sources = list(set(post.source for post in self.current_posts if post.source))
-                # Update source ComboBox
-                self.source_combo.configure(values=["All sources"] + sorted(sources))
-                self.source_combo.set("All sources")
-
-                # Calculer le nombre total de posts par source (all time)
-                self.source_post_count = {}
-                for source in sources:
-                    self.source_post_count[source] = len([p for p in self.current_posts if p.source == source])
-
-                # Display information
-                self.update_info_display()
-                self.apply_filters()
-
-                self.status_label.configure(text="🟢 Data loaded from veille_db.json")
-            else:
-                self.current_posts = []
-                self.current_metadata = {}
-                self.source_post_count = {}
-                self.status_label.configure(text="❌ No articles found in veille_db.json")
-        except Exception as e:
-            logging.error(f"Error loading data: {e}", exc_info=True)
-            self.status_label.configure(text=f"❌ Loading error: {e}")
+        self.show_spinner("Chargement des données...")
+        def load_and_index():
+            try:
+                result = self.load_use_case.load_latest()
+                if result.posts:
+                    self.current_posts = [dto.to_entity() for dto in result.posts]
+                    self.current_metadata = result.metadata
+                    sources = list(set(post.source for post in self.current_posts if post.source))
+                    # Schedule all Tkinter widget updates in the main thread
+                    self.root.after(0, lambda: self.source_combo.configure(values=["All sources"] + sorted(sources)))
+                    self.root.after(0, lambda: self.source_combo.set("All sources"))
+                    self.source_post_count = {}
+                    for source in sources:
+                        self.source_post_count[source] = len([p for p in self.current_posts if p.source == source])
+                    self.build_indexes()
+                    self.root.after(0, self.hide_spinner)
+                    self.root.after(0, self.update_info_display)
+                    self.root.after(0, self.apply_filters)
+                    self.root.after(0, lambda: self.status_label.configure(text="🟢 Data loaded from techwatch_db.json"))
+                else:
+                    self.current_posts = []
+                    self.current_metadata = {}
+                    self.source_post_count = {}
+                    self.root.after(0, self.hide_spinner)
+                    self.root.after(0, lambda: self.status_label.configure(text="❌ No articles found in techwatch_db.json"))
+            except Exception as e:
+                logging.error(f"Error loading data: {e}", exc_info=True)
+                self.root.after(0, self.hide_spinner)
+                # Use a default argument to capture 'e' in the lambda
+                self.root.after(0, lambda err=e: self.status_label.configure(text=f"❌ Loading error: {err}"))
+        threading.Thread(target=load_and_index, daemon=True).start()
 
     def update_info_display(self):
         """Update the display of information/metadata"""
@@ -324,22 +407,26 @@ class TechWatchGUI:
         self.info_textbox.insert("0.0", info_text)
 
     def apply_filters(self, *args):
-        """Apply date and source filters and update the display"""
-        try:
-            if not self.current_posts:
-                return
+        """Apply date and source filters and update the display, with debounce and LRU cache"""
+        # Debounce: cancel previous timer if exists
+        if self.debounce_timer:
+            self.root.after_cancel(self.debounce_timer)
+        # Schedule filter after short delay (e.g. 200ms)
+        self.debounce_timer = self.root.after(200, self._do_filter)
 
-            # Using domain services for filtering
-            from src.domain.services.post_service import PostFilteringService
-        """Apply date and source filters and update the display, with cache and threading"""
+    def _do_filter(self):
+        self.show_spinner("Filtrage en cours...")
         def filter_and_display():
             with self.display_lock:
                 if not self.current_posts:
+                    self.root.after(0, self.hide_spinner)
                     return
                 # Cache key
                 cache_key = (self.days_back_var.get(), self.source_var.get())
+                # LRU cache: move to end if used, pop oldest if over max size
                 if cache_key in self.filter_cache:
                     filtered_posts = self.filter_cache[cache_key]
+                    self.filter_cache.move_to_end(cache_key)
                 else:
                     from src.domain.services.post_service import PostFilteringService
                     filtering_service = PostFilteringService()
@@ -352,283 +439,130 @@ class TechWatchGUI:
                     filtered_posts = filtering_service.filter_by_source(filtered_posts, source_filter)
                     filtered_posts = filtering_service.sort_by_date(filtered_posts)
                     self.filter_cache[cache_key] = filtered_posts
+                    if len(self.filter_cache) > self.cache_max_size:
+                        self.filter_cache.popitem(last=False)
                 self.displayed_batch_index = 0
                 self.displayed_posts = filtered_posts
-                self.status_label.configure(text=f"📊 {len(filtered_posts)}/{len(self.current_posts)} articles displayed")
-                self.display_next_batch()
+                self.root.after(0, self.hide_spinner)
+                self.root.after(0, lambda: self.status_label.configure(text=f"📊 {len(filtered_posts)}/{len(self.current_posts)} articles displayed"))
+                self.root.after(0, self.display_next_batch)
         threading.Thread(target=filter_and_display, daemon=True).start()
-            logging.error(f"Error filtering: {e}", exc_info=True)
+
     def display_next_batch(self):
-        """Affiche le prochain batch d'articles (affichage progressif, thread safe)"""
-        with self.display_lock:
-            start = self.displayed_batch_index * self.batch_size
-            end = start + self.batch_size
-            batch = self.displayed_posts[start:end]
-            if not batch and self.displayed_batch_index == 0:
-                self.show_no_results_message()
-                return
-            # Clear display uniquement au début
-            if self.displayed_batch_index == 0:
-                for widget in self.results_main_frame.winfo_children():
-                    widget.destroy()
-                self.left_column_row = 0
-                self.right_column_row = 0
-                self.stored_urls.clear()
-            # Affiche le batch
-            sources_attendues = self.source_combo.cget('values')
-            if "All sources" in sources_attendues:
-                sources_attendues = [s for s in sources_attendues if s != "All sources"]
-            posts_by_source = {}
-            for post in batch:
-                source = post.source or "Unknown source"
-                if source not in posts_by_source:
-                    posts_by_source[source] = []
-                posts_by_source[source].append(post)
-            any_result = False
-            for source in sources_attendues:
-                source_posts = posts_by_source.get(source, [])
-                self.display_posts_for_source(source, source_posts)
-                if source_posts:
-                    any_result = True
-            if not any_result and self.displayed_batch_index == 0:
-                self.show_no_results_message()
-            # Affichage du bouton "Afficher plus" si batch incomplet
-            if end < len(self.displayed_posts):
-                show_more_btn = ctk.CTkButton(
-                    self.results_main_frame,
-                    text="Afficher plus d'articles",
-                    command=self.load_more_batch,
-                    font=ctk.CTkFont(size=14),
-                    fg_color=self.colors['accent'],
-                    hover_color="#2a9fd6"
-                )
-                show_more_btn.grid(row=max(self.left_column_row, self.right_column_row)+1, column=0, columnspan=2, pady=20)
-                    text_color=self.colors['text_secondary']
+        self.show_spinner("Affichage des articles...")
+        def batch_render():
+            with self.display_lock:
+                start = self.displayed_batch_index * self.batch_size
+                end = start + self.batch_size
+                batch = self.displayed_posts[start:end]
+                if not batch and self.displayed_batch_index == 0:
+                    self.root.after(0, self.hide_spinner)
+                    self.root.after(0, self.show_no_results_message)
+                    return
+                # Cancel all scheduled after callbacks before clearing display
+                for after_id in self.scheduled_after_ids:
+                    try:
+                        self.root.after_cancel(after_id)
+                    except Exception:
+                        pass
+                self.scheduled_after_ids.clear()
+                # Clear display uniquement au début
+                if self.displayed_batch_index == 0:
+                    def clear_results_area():
+                        for widget in self.results_main_frame.winfo_children():
+                            widget.destroy()
+                        self.left_column_row = 0
+                        self.right_column_row = 0
+                        self.stored_urls.clear()
+                    self.root.after(0, clear_results_area)
+                # Affichage progressif par chunk
+                after_id = self.root.after(0, lambda: self._render_batch_chunk(batch, 0))
+                self.scheduled_after_ids.append(after_id)
+        threading.Thread(target=batch_render, daemon=True).start()
+
+    def _render_batch_chunk(self, batch, chunk_index):
+        chunk_size = 10
+        chunk = batch[chunk_index*chunk_size:(chunk_index+1)*chunk_size]
+        sources_attendues = self.source_combo.cget('values')
+        if "All sources" in sources_attendues:
+            sources_attendues = [s for s in sources_attendues if s != "All sources"]
+        posts_by_source = {}
+        for post in chunk:
+            source = post.source or "Unknown source"
+            if source not in posts_by_source:
+                posts_by_source[source] = []
+            posts_by_source[source].append(post)
+        any_result = False
+        for source in sources_attendues:
+            source_posts = posts_by_source.get(source, [])
+            self.display_posts_for_source(source, source_posts)
+            if source_posts:
+                any_result = True
+        if not any_result and self.displayed_batch_index == 0 and chunk_index == 0:
+            self.show_no_results_message()
+        # Affichage du bouton "Afficher plus" si batch incomplet
+        total_len = len(self.displayed_posts)
+        end = (self.displayed_batch_index+1)*self.batch_size
+        if end < total_len and chunk_index == ((self.batch_size-1)//chunk_size):
+            show_more_btn = ctk.CTkButton(
+                self.results_main_frame,
+                text="Afficher plus d'articles",
+                command=self.load_more_batch,
+                font=ctk.CTkFont(size=14),
+                fg_color=self.colors['accent'],
+                hover_color="#2a9fd6"
+            )
+            show_more_btn.grid(row=max(self.left_column_row, self.right_column_row)+1, column=0, columnspan=2, pady=20)
+        # Si il reste des chunks à afficher, planifier le suivant
+        if (chunk_index+1)*chunk_size < len(batch):
+            after_id = self.root.after(10, lambda: self._render_batch_chunk(batch, chunk_index+1))
+            self.scheduled_after_ids.append(after_id)
+        else:
+            self.hide_spinner()
+
     def load_more_batch(self):
         """Charge le batch suivant d'articles"""
         with self.display_lock:
             self.displayed_batch_index += 1
             self.display_next_batch()
-        # Clear previous content of status_frame only
-        for widget in self.status_frame.winfo_children():
-            widget.destroy()
-
-        # Create welcome card
-        welcome_card = ctk.CTkFrame(self.status_frame, corner_radius=10, fg_color="gray20")
-        welcome_card.pack(fill="x", padx=10, pady=10)
-
-        welcome_title = ctk.CTkLabel(
-            welcome_card,
-            text="🎉 Welcome to the Watch Results Consultation Interface!",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=self.colors['text']
-        )
-        welcome_title.pack(pady=(15, 10))
-
-        welcome_desc = ctk.CTkLabel(
-            welcome_card,
-            text="📖 This interface reads JSON files generated by the console watch service",
-            font=ctk.CTkFont(size=14),
-            text_color=self.colors['text_secondary']
-        )
-        welcome_desc.pack(pady=(0, 5))
-
-        instructions = ctk.CTkLabel(
-            welcome_card,
-            text="📋 1️⃣ Select a file • 2️⃣ Filter by period/source • 3️⃣ View results",
-            font=ctk.CTkFont(size=12),
-            text_color=self.colors['text_secondary']
-        )
-        instructions.pack(pady=(0, 15))
-
-    def show_no_data_message(self):
-        """Display a message when no data is available"""
-        # Clear previous content
-        for widget in self.status_frame.winfo_children():
-            widget.destroy()
-
-        # Create no data card
-        no_data_card = ctk.CTkFrame(self.status_frame, corner_radius=10, fg_color="gray20")
-        no_data_card.pack(fill="x", padx=10, pady=10)
-
-        no_data_title = ctk.CTkLabel(
-            no_data_card,
-            text="📭 No watch data available",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=self.colors['warning']
-        )
-        no_data_title.pack(pady=(15, 10))
-
-        instructions = ctk.CTkLabel(
-            no_data_card,
-            text="💡 First, run the console service to generate watch data",
-            font=ctk.CTkFont(size=14),
-            text_color=self.colors['text_secondary']
-        )
-        instructions.pack(pady=(0, 15))
-
-    def show_no_results_message(self):
-        """Display a message when no results match the filters"""
-        no_results_frame = ctk.CTkFrame(self.results_main_frame, corner_radius=8, fg_color="gray20")
-        no_results_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
-
-        no_results_label = ctk.CTkLabel(
-            no_results_frame,
-            text="🔍 No article matches the selected filters",
-            font=ctk.CTkFont(size=14),
-            text_color=self.colors['warning']
-        )
-        no_results_label.pack(pady=15)
-
-    def open_link(self, url: str):
-        """Open a link in the browser with feedback"""
-        try:
-            webbrowser.open(url)
-            self.status_label.configure(text="🌐 Article opened in browser...")
-        except Exception as e:
-            self.status_label.configure(text=f"❌ Error opening: {str(e)}")
-
-    def setup_global_logging(self):
-        """Global logging configuration to capture all errors"""
-        import sys
-
-        # Main logging configuration
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler('var/logs/gui_main.log'),
-                logging.StreamHandler()
-            ]
-        )
-
-        # Handler for uncaught exceptions
-        def handle_exception(exc_type, exc_value, exc_traceback):
-            if issubclass(exc_type, KeyboardInterrupt):
-                sys.__excepthook__(exc_type, exc_value, exc_traceback)
-                return
-
-            logging.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
-
-        sys.excepthook = handle_exception
-
-    def handle_exception(self, exception_type, exception_value, exception_traceback):
-        """Exception handling in the Tkinter interface"""
-        error_msg = f"Interface error: {exception_type.__name__}: {exception_value}"
-        logging.error(error_msg)
-        logging.error("Full traceback:", exc_info=(exception_type, exception_value, exception_traceback))
-
-        # Display the error in the interface if possible
-        try:
-            self.status_label.configure(text=f"❌ {exception_value}")
-        except:
-            pass  # If even the status doesn't work, continue
-
-    def setup_logging(self):
-        """Logging configuration for the graphical interface"""
-        class GuiLogHandler(logging.Handler):
-            def __init__(self, gui_instance):
-                super().__init__()
-                self.gui = gui_instance
-
-            def emit(self, record):
-                msg = self.format(record)
-                # Write to GUI log file
-                try:
-                    with open('var/logs/gui_events.log', 'a', encoding='utf-8') as f:
-                        f.write(f"{msg}\n")
-                except:
-                    pass
-
-        gui_handler = GuiLogHandler(self)
-        gui_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logging.getLogger().addHandler(gui_handler)
-
-    def run(self):
-        """Launch the modern graphical interface"""
-        # Full initialization at startup
-        self.refresh_file_list()
-
-        # Start the main loop
-        self.root.mainloop()
-
-    def refresh_file_list(self):
-        """
-        Refresh the technology watch data from the unified database file.
-        This replaces the old file selection logic and ensures the latest data is loaded.
-        """
-        self.load_latest_data()
-        # Optionally, update the GUI display if needed
-        # Example: self.update_display()
-
-    def force_data_generation(self):
-        """Force the generation of new data via the console service"""
-        def run_generation():
+        # Always destroy and recreate status_frame to avoid stale references and TclError
+        import tkinter
+        def recreate_status_frame():
             try:
-                # Update status on the main thread
-                self.root.after(0, lambda: self.status_label.configure(text="⏳ Generating new data..."))
-                self.root.after(0, lambda: self.generate_button.configure(state="disabled", text="⏳ Generating..."))
+                if hasattr(self, 'status_frame') and self.status_frame.winfo_exists():
+                    self.status_frame.destroy()
+            except Exception:
+                pass  # Ignore if already destroyed
+            self.status_frame = ctk.CTkFrame(self.results_main_frame, fg_color="transparent")
+            self.status_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=10)
+            # Create welcome card
+            welcome_card = ctk.CTkFrame(self.status_frame, corner_radius=10, fg_color="gray20")
+            welcome_card.pack(fill="x", padx=10, pady=10)
 
-                # Launch the console service to generate new data
-                import subprocess
-                import os
+            welcome_title = ctk.CTkLabel(
+                welcome_card,
+                text="🎉 Welcome to the Watch Results Consultation Interface!",
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=self.colors['text']
+            )
+            welcome_title.pack(pady=(15, 10))
 
-                # Path to the virtual environment and script
-                venv_python = os.path.join(os.getcwd(), ".venv", "bin", "python")
-                service_script = os.path.join(os.getcwd(), "veille_service.py")
+            welcome_desc = ctk.CTkLabel(
+                welcome_card,
+                text="📖 This interface reads JSON files generated by the console watch service",
+                font=ctk.CTkFont(size=14),
+                text_color=self.colors['text_secondary']
+            )
+            welcome_desc.pack(pady=(0, 5))
 
-                command = [venv_python, service_script]
-
-                # Execute the console service
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,  # 5 minutes timeout
-                    cwd=os.getcwd()
-                )
-
-                if result.returncode == 0:
-                    # Success - extract the number of articles from the output
-                    output_lines = result.stdout.strip().split('\n')
-                    articles_count = "new"
-                    for line in output_lines:
-                        if "articles found" in line:
-                            articles_count = line.split("articles found")[0].strip().split()[-1]
-                            break
-
-                    # Update interface on the main thread
-                    self.root.after(0, lambda: self.status_label.configure(text=f"✅ New data generated - {articles_count} articles"))
-                    self.root.after(0, lambda: self.refresh_file_list())
-
-                    # Success notification
-                    try:
-                        notification.notify(
-                            title="🔍 Technology Watch",
-                            message=f"✅ New data generated with {articles_count} articles",
-                            timeout=10
-                        )
-                    except:
-                        pass  # Optional notification
-
-                else:
-                    # Error during execution
-                    error_msg = result.stderr or "Unknown error during generation"
-                    self.root.after(0, lambda: self.status_label.configure(text=f"❌ Error: {error_msg[:50]}..."))
-
-            except subprocess.TimeoutExpired:
-                self.root.after(0, lambda: self.status_label.configure(text="❌ Timeout: generation too long"))
-            except Exception as e:
-                error_msg = str(e)
-                self.root.after(0, lambda: self.status_label.configure(text=f"❌ Error: {error_msg[:50]}..."))
-                logging.error(f"Error generating data: {e}", exc_info=True)
-            finally:
-                # Reactivate button on the main thread
-                self.root.after(0, lambda: self.generate_button.configure(state="normal", text="🔄 Generate New Data"))
-
-        # Start generation in a separate thread to avoid blocking the interface
-        generation_thread = threading.Thread(target=run_generation, daemon=True)
-        generation_thread.start()
+            instructions = ctk.CTkLabel(
+                welcome_card,
+                text="📋 1️⃣ Select a file • 2️⃣ Filter by period/source • 3️⃣ View results",
+                font=ctk.CTkFont(size=12),
+                text_color=self.colors['text_secondary']
+            )
+            instructions.pack(pady=(0, 15))
+        self.root.after(0, recreate_status_frame)
 
     def display_filtered_posts(self, posts: List[Post]):
         """Display filtered posts in the interface, with alert for sources sans post (affichage progressif)"""
@@ -660,10 +594,171 @@ class TechWatchGUI:
         if not any_result and self.displayed_batch_index == 0:
             self.show_no_results_message()
 
+    def show_welcome_message(self):
+        """Display the modern welcome message - only if no data is loaded"""
+        # Clear previous content of status_frame only
+        for widget in self.status_frame.winfo_children():
+            widget.destroy()
+        # Create welcome card
+        welcome_card = ctk.CTkFrame(self.status_frame, corner_radius=10, fg_color="gray20")
+        welcome_card.pack(fill="x", padx=10, pady=10)
+
+        welcome_title = ctk.CTkLabel(
+            welcome_card,
+            text="🎉 Welcome to the Watch Results Consultation Interface!",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.colors['text']
+        )
+        welcome_title.pack(pady=(15, 10))
+
+        welcome_desc = ctk.CTkLabel(
+            welcome_card,
+            text="📖 This interface reads JSON files generated by the console watch service",
+            font=ctk.CTkFont(size=14),
+            text_color=self.colors['text_secondary']
+        )
+        welcome_desc.pack(pady=(0, 5))
+
+        instructions = ctk.CTkLabel(
+            welcome_card,
+            text="📋 1️⃣ Select a file • 2️⃣ Filter by period/source • 3️⃣ View results",
+            font=ctk.CTkFont(size=12),
+            text_color=self.colors['text_secondary']
+        )
+        instructions.pack(pady=(0, 15))
+
+    def display_posts_for_source(self, source, posts):
+        """Display all posts for a given source in the results area, in the correct column."""
+        if not posts:
+            return  # Nothing to display for this source
+        # Add a label for the source
+        source_label = ctk.CTkLabel(
+            self.results_main_frame,
+            text=f"📰 {source}",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=self.colors['accent']
+        )
+        # Alternate columns: left for even, right for odd sources
+        col = 0 if self.left_column_row <= self.right_column_row else 1
+        row = self.left_column_row if col == 0 else self.right_column_row
+        source_label.grid(row=row, column=col, sticky="w", padx=10, pady=(10, 2))
+        if col == 0:
+            self.left_column_row += 1
+        else:
+            self.right_column_row += 1
+        # Display each post under the source label
+        for post in posts:
+            post_frame = ctk.CTkFrame(self.results_main_frame, corner_radius=8, fg_color="gray15")
+            post_frame.grid(row=(self.left_column_row if col == 0 else self.right_column_row), column=col, sticky="ew", padx=10, pady=4)
+            # Title
+            title_label = ctk.CTkLabel(
+                post_frame,
+                text=post.title,
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color=self.colors['text']
+            )
+            title_label.pack(anchor="w", padx=8, pady=(6, 2))
+            # Date and source
+            meta_label = ctk.CTkLabel(
+                post_frame,
+                text=f"{post.date} • {post.source}",
+                font=ctk.CTkFont(size=12),
+                text_color=self.colors['text_secondary']
+            )
+            meta_label.pack(anchor="w", padx=8, pady=(0, 2))
+            # Link button
+            if post.url:
+                link_btn = ctk.CTkButton(
+                    post_frame,
+                    text="🔗 Open Article",
+                    command=lambda url=post.url: self.open_link(url),
+                    font=ctk.CTkFont(size=12),
+                    fg_color=self.colors['accent'],
+                    hover_color="#2a9fd6",
+                    height=28,
+                    width=120
+                )
+                link_btn.pack(anchor="w", padx=8, pady=(0, 6))
+            # Increment row for next post
+            if col == 0:
+                self.left_column_row += 1
+            else:
+                self.right_column_row += 1
+
+    def handle_exception(self, exception_type, exception_value, exception_traceback):
+        """Exception handling in the Tkinter interface"""
+        error_msg = f"Interface error: {exception_type.__name__}: {exception_value}"
+        logging.error(error_msg)
+        logging.error("Full traceback:", exc_info=(exception_type, exception_value, exception_traceback))
+        # Display the error in the interface if possible
+        try:
+            self.status_label.configure(text=f"❌ {exception_value}")
+        except Exception:
+            pass  # If even the status doesn't work, continue
+
+    def force_data_generation(self):
+        """Force the generation of new data via the console service"""
+        def run_generation():
+            try:
+                self.root.after(0, lambda: self.status_label.configure(text="⏳ Generating new data..."))
+                self.root.after(0, lambda: self.generate_button.configure(state="disabled", text="⏳ Generating..."))
+
+                import subprocess
+                import os
+
+                result = subprocess.run(
+                    ["python", "techwatch_service.py"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    cwd=os.getcwd()
+                )
+
+                if result.returncode == 0:
+                    output_lines = result.stdout.strip().split('\n')
+                    articles_count = "new"
+                    for line in output_lines:
+                        if "articles found" in line:
+                            articles_count = line.split("articles found")[0].strip().split()[-1]
+                            break
+                    self.root.after(0, lambda: self.status_label.configure(text=f"✅ New data generated - {articles_count} articles"))
+                    self.root.after(0, lambda: self.load_latest_data())
+                    try:
+                        notification.notify(
+                            title="🔍 Technology Watch",
+                            message=f"✅ New data generated with {articles_count} articles",
+                            timeout=10
+                        )
+                    except Exception:
+                        pass
+                else:
+                    error_msg = result.stderr or "Unknown error during generation"
+                    self.root.after(0, lambda: self.status_label.configure(text=f"❌ Error: {error_msg[:50]}..."))
+
+            except subprocess.TimeoutExpired:
+                self.root.after(0, lambda: self.status_label.configure(text="❌ Timeout: generation too long"))
+            except Exception as e:
+                error_msg = str(e)
+                self.root.after(0, lambda: self.status_label.configure(text=f"❌ Error: {error_msg[:50]}..."))
+                logging.error(f"Error generating data: {e}", exc_info=True)
+            finally:
+                self.root.after(0, lambda: self.generate_button.configure(state="normal", text="Generate new data"))
+
+        # Start generation in a separate thread to avoid blocking the interface
+        generation_thread = threading.Thread(target=run_generation, daemon=True)
+        generation_thread.start()
+
+    def run(self):
+        """Launch the modern graphical interface"""
+        self.root.mainloop()
+
 def main():
     """Entry point of the modern GUI application"""
+    print("[DEBUG] main() started")
     app = TechWatchGUI()
+    print("[DEBUG] TechWatchGUI instance created, starting mainloop...")
     app.run()
+    print("[DEBUG] mainloop finished")
 
 if __name__ == "__main__":
     main()

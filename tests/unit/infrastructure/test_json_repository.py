@@ -18,7 +18,7 @@ class TestJsonPostRepository(unittest.TestCase):
     def setUp(self):
         """Test setup with temporary directory and unified database file"""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = Path(self.temp_dir) / "veille_db.json"
+        self.db_path = Path(self.temp_dir) / "techwatch_db.json"
         self.repository = JsonPostRepository(db_path=str(self.db_path))
 
     def tearDown(self):

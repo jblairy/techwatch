@@ -41,9 +41,9 @@ class FileCrawlerRepository(CrawlerRepository):
             'name': crawler_name,
             'enabled': True,
             'timeout': 10,
-            'headers': {
-                'User-Agent': 'Mozilla/5.0 (compatible; VeilleTech/2.0)'
-            },
+            #'headers': {
+            #    'User-Agent': 'Mozilla/5.0 (compatible; Techwatch/2.0)'
+            #},
             'retry_count': 3,
             'retry_delay': 1
         }

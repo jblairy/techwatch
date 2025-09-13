@@ -117,9 +117,9 @@ class WatchResultDTO:
 
 
 @dataclass
-class VeilleRequestDTO:
+class RequestDTO:
     """
-    Data Transfer Object for veille data requests
+    Data Transfer Object for techwatch data requests
     Used to specify filtering and loading parameters
     """
     file_path: Optional[str] = None
@@ -137,9 +137,9 @@ class VeilleRequestDTO:
 
 
 @dataclass
-class VeilleMetadataDTO:
+class MetadataDTO:
     """
-    Data Transfer Object for veille metadata
+    Data Transfer Object for metadata
     Contains information about the data collection process
     """
     generated_at: str
@@ -150,15 +150,15 @@ class VeilleMetadataDTO:
     generation_stats: Optional[Dict[str, Any]] = None
 
     @classmethod
-    def from_dict(cls, metadata: Dict[str, Any]) -> 'VeilleMetadataDTO':
+    def from_dict(cls, metadata: Dict[str, Any]) -> 'MetadataDTO':
         """
-        Create VeilleMetadataDTO from dictionary
+        Create MetadataDTO from dictionary
 
         Args:
             metadata: Dictionary containing metadata
 
         Returns:
-            VeilleMetadataDTO: Metadata DTO
+            MetadataDTO: Metadata DTO
         """
         return cls(
             generated_at=metadata.get('generated_at', ''),
@@ -187,7 +187,7 @@ class VeilleMetadataDTO:
 
 
 @dataclass
-class VeilleResultDTO:
+class ResultDTO:
     """
     Data Transfer Object for technology watch results.
     Encapsulates a list of PostDTOs, total count, and metadata.
@@ -199,9 +199,9 @@ class VeilleResultDTO:
     error: Optional[str] = None
 
     @classmethod
-    def from_posts(cls, posts: List[Post], metadata: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> 'VeilleResultDTO':
+    def from_posts(cls, posts: List[Post], metadata: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> 'ResultDTO':
         """
-        Create a VeilleResultDTO from a list of domain Post entities and optional metadata.
+        Create a ResultDTO from a list of domain Post entities and optional metadata.
         """
         post_dtos = [PostDTO.from_domain_entity(post) for post in posts]
         return cls(

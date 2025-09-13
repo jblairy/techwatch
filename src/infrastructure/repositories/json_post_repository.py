@@ -2,7 +2,7 @@
 JSON Persistence Adapter - Infrastructure
 Hexagonal Architecture DDD
 
-This repository now manages a single database file (veille_db.json) for all technology watch articles.
+This repository now manages a single database file (techwatch_db.json) for all technology watch articles.
 All new articles are appended to this file, and duplicates are avoided by URL.
 This design ensures robust, maintainable, and scalable persistence, and is ready for future migration to a real database if needed.
 """
@@ -22,11 +22,11 @@ class JsonPostRepository(PostRepository):
     """
     Concrete repository implementation for a single JSON file persistence.
 
-    This class manages a unique database file (veille_db.json).
+    This class manages a unique database file (techwatch_db.json).
     All articles are stored in this file, and all read/write operations are centralized.
     """
 
-    def __init__(self, db_path: str = "var/saves/veille_db.json"):
+    def __init__(self, db_path: str = "var/saves/techwatch_db.json"):
         """
         Initialize the repository with the path to the database file.
         Creates the parent directory if it does not exist.
@@ -162,17 +162,17 @@ class JsonPostRepository(PostRepository):
     # Deprecated methods for legacy tests (raise NotImplementedError)
     def delete_save(self, *args, **kwargs):
         """Deprecated: multi-file save deletion is not supported anymore."""
-        raise NotImplementedError("delete_save is deprecated. Only veille_db.json is supported.")
+        raise NotImplementedError("delete_save is deprecated. Only techwatch_db.json is supported.")
 
     def list_available_saves(self, *args, **kwargs):
         """Deprecated: multi-file listing is not supported anymore."""
-        raise NotImplementedError("list_available_saves is deprecated. Only veille_db.json is supported.")
+        raise NotImplementedError("list_available_saves is deprecated. Only techwatch_db.json is supported.")
 
     def load_by_id(self, *args, **kwargs):
         """Deprecated: loading by ID is not supported anymore."""
-        raise NotImplementedError("load_by_id is deprecated. Only veille_db.json is supported.")
+        raise NotImplementedError("load_by_id is deprecated. Only techwatch_db.json is supported.")
 
     def load_from_file(self, *args, **kwargs):
         """Deprecated: loading from file is not supported anymore."""
-        raise NotImplementedError("load_from_file is deprecated. Only veille_db.json is supported.")
+        raise NotImplementedError("load_from_file is deprecated. Only techwatch_db.json is supported.")
 

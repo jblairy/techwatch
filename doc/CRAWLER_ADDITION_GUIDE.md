@@ -170,7 +170,7 @@ class TestNewSourceCrawler(unittest.TestCase):
 
 **4.2 Manual Testing**
 ```bash
-python veille_service.py --source new-source --days 1
+python techwatch_service.py --source new-source --days 1
 python main.py show --source new-source
 ```
 

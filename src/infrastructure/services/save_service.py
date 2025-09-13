@@ -38,7 +38,7 @@ class SaveService:
 
         # Generate unique save identifier
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_id = f"veille_{timestamp}"
+        save_id = f"techwatch_{timestamp}"
 
         # Save only in JSON
         self.save_json(posts, metadata, save_id)

@@ -2,7 +2,7 @@
 CLI Interface - Presentation Layer
 Hexagonal Architecture DDD
 
-This CLI is designed to interact with a single, robust database file (veille_db.json).
+This CLI is designed to interact with a single, robust database file (techwatch_db.json).
 All commands operate on this unified source, ensuring maintainability and eliminating user confusion about file selection.
 All documentation and help messages are in English for consistency and accessibility.
 """
@@ -11,12 +11,12 @@ import logging
 import sys
 from typing import Optional, List
 
-from ...application.use_cases.veille_use_cases import (
+from ...application.use_cases.techwatch_use_cases import (
     LoadWatchDataUseCase,
     SaveWatchDataUseCase,
     AnalyzeWatchDataUseCase
 )
-from ...application.dto.post_dto import VeilleRequestDTO
+from ...application.dto.post_dto import RequestDTO
 from ...infrastructure.repositories.json_post_repository import JsonPostRepository
 from ...infrastructure.adapters.crawler_adapter import FileCrawlerRepository
 
@@ -25,7 +25,7 @@ class TechWatchCLI:
     """
     Command line interface for the technology watch tool.
 
-    All operations use a single database file (veille_db.json).
+    All operations use a single database file (techwatch_db.json).
     No file selection is required; all results and analyses are performed on the latest data.
     """
 
@@ -89,7 +89,7 @@ class TechWatchCLI:
         Execute the show command using the unified database.
         """
         try:
-            request = VeilleRequestDTO(
+            request = RequestDTO(
                 days_back=args.days_back,
                 source_filter=args.source,
                 limit=args.limit
@@ -127,7 +127,7 @@ class TechWatchCLI:
         Execute the analyze command using the unified database.
         """
         try:
-            request = VeilleRequestDTO(
+            request = RequestDTO(
                 days_back=args.days_back,
                 source_filter=args.source
             )

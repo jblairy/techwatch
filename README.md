@@ -51,51 +51,79 @@ src/
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd veille
+cd techwatch
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Or use the automatic installation script
+# Use the automatic installation script (Docker required)
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
+
+**The installation script will:**
+- Build the Docker image and launch the GUI in a container
+- Install the launcher script in `~/.local/bin/start_techwatch_gui.sh` (added to PATH if needed)
+- Install the icon in `~/.local/share/icons/techwatch.png`
+- Install the desktop shortcut in `~/.local/share/applications/techwatch.desktop` (with automatic detection of the project directory)
+- Update the desktop application database
+
+**Manual installation is not supported. No system-wide files are modified. All changes are limited to the current user.**
 
 ## 🎯 Usage
 
 ### Modern Graphical Interface (Recommended)
 ```bash
-# Launch the CustomTkinter GUI
-python gui_main.py
+# Launch the GUI via the desktop shortcut (Techwatch in your menu)
+# Or directly (with project directory detection):
+TECHWATCH_PROJECT_DIR=$HOME/techwatch start_techwatch_gui.sh
 ```
 
-**Modern interface features:**
-- 🎨 **Modern design**: Dark theme with CustomTkinter
-- 📊 **Advanced visualization**: Tabs, filters, metadata
-- 🔄 **Forced generation**: Button to force new data creation
-- 📱 **Responsive design**: Adaptive interface with dynamic columns
-- 🔗 **Interactive links**: Direct article opening in browser
-- ⚡ **Real-time**: Automatic loading and refresh
-- 🗂️ **Clean interface**: Simplified design focused on essentials
+**Note:** The desktop shortcut automatically sets the TECHWATCH_PROJECT_DIR environment variable to your project folder. If you move your techwatch folder, update the shortcut accordingly or launch the script with the correct TECHWATCH_PROJECT_DIR value.
 
-### Command Line Interface (Hexagonal Architecture)
+### Command Line Interface
 ```bash
-# New DDD entry point
-python main_hexagonal.py list                    # List saves
-python main_hexagonal.py show                    # Show latest data
-python main_hexagonal.py show --days-back 7      # Filter by period
-python main_hexagonal.py show --source <source_name>   # Filter by source
-python main_hexagonal.py analyze                 # Analyze data
+# Show latest data
+python main.py show
+# Filter by period
+python main.py show --days 7
+# Filter by source
+python main.py show --source <source_name>
+# Analyze data
+python main.py analyze
 ```
 
 ### Console Service (Crawling)
 ```bash
-# Crawling service (generates JSON files)
-python veille_service.py --days 7               # Crawl 7 days
-python veille_service.py --sources <source_name>      # Specific source
-python veille_service.py --continuous           # Continuous mode (systemd)
-python veille_service.py --silent               # Silent mode
+# Crawl and generate JSON files
+python techwatch_service.py --days 7               # Crawl 7 days
+python techwatch_service.py --sources <source_name>      # Specific source
 ```
+
+## Automated Periodic Update (Cron)
+
+Techwatch can be configured to auto-launch the GUI via Docker at a regular interval using a cron job. This is managed via the install script and Makefile.
+
+### Usage
+- To install with auto-update every N minutes:
+  ```
+  make install.autoupdate MINUTES=5
+  ```
+  or
+  ```
+  bash scripts/install.sh --autoupdate 5
+  ```
+- This creates a cron job in `/etc/cron.d/techwatch-gui` that launches the GUI container every N minutes.
+- To uninstall and remove the cron job:
+  ```
+  make uninstall
+  ```
+  or
+  ```
+  bash scripts/uninstall.sh
+  ```
+
+### Notes
+- If the `--autoupdate` flag is not provided, no cron job is installed.
+- The frequency is fully configurable via the MINUTES variable or the flag value.
+- The cron job is robust and automatically removed on uninstall.
 
 ## 💾 Save System
 
@@ -150,12 +178,12 @@ The system uses **exclusively JSON format** for data persistence:
 python -m pytest tests/ -v
 
 # Or with unittest
-python -m unittest tests.test_veille -v
+python -m unittest tests.test_techwatch -v
 
 # Layer-specific tests
-python -m unittest tests.test_veille.TestPost -v              # Domain
-python -m unittest tests.test_veille.TestLoadWatchDataUseCase -v  # Application
-python -m unittest tests.test_veille.TestJsonPostRepository -v     # Infrastructure
+python -m unittest tests.test_techwatch.TestPost -v              # Domain
+python -m unittest tests.test_techwatch.TestLoadWatchDataUseCase -v  # Application
+python -m unittest tests.test_techwatch.TestJsonPostRepository -v     # Infrastructure
 ```
 
 ---
@@ -166,11 +194,9 @@ python -m unittest tests.test_veille.TestJsonPostRepository -v     # Infrastruct
 var/
 ├── logs/                    # Logging files
 │   ├── gui_main.log        # GUI logs
-│   └── veille_service.log  # Crawling service logs
+│   └── techwatch_service.log  # Crawling service logs
 └── saves/                  # JSON saves only
-    ├── veille_20250908_084702.json
-    ├── veille_20250908_094948.json
-    └── ...
+    └── techwatch_db.json
 ```
 
 ## 🔄 Recent Developments
@@ -192,6 +218,31 @@ To contribute to the project:
 ## 📄 License
 
 This project is under MIT license.
+
+---
+
+## 🐳 Docker & Automated Installation
+
+You can use the automated installation script to build and launch the application in a Docker container, and install desktop/user integrations:
+
+```bash
+bash scripts/install.sh
+```
+
+### Force Docker Image Rebuild
+
+If you want to force a rebuild of the Docker image (for example, after updating the code or dependencies), use the `--rebuild` or `-r` flag:
+
+```bash
+bash scripts/install.sh --rebuild
+```
+
+This will rebuild the `techwatch-gui` Docker image even if it already exists, ensuring your changes are included.
+
+- The script will also install the desktop shortcut and user integrations automatically.
+- The GUI will be launched in a container and should appear on your desktop if X11 is configured.
+
+**Note:** If you encounter display issues, make sure your X11 permissions are set and Docker is running with access to your display.
 
 ---
 

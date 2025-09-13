@@ -7,7 +7,7 @@ import os
 from datetime import date
 from src.domain.entities.post import Post
 from src.domain.value_objects.date_range import DateRange
-from src.application.use_cases.veille_use_cases import LoadVeilleDataUseCase
+from src.application.use_cases.techwatch_use_cases import LoadDataUseCase
 from src.infrastructure.repositories.json_post_repository import JsonPostRepository
 
 
@@ -17,9 +17,9 @@ class TestDomainApplicationIntegration(unittest.TestCase):
     def setUp(self):
         """Setup with temporary repository and unified database file"""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, "veille_db.json")
+        self.db_path = os.path.join(self.temp_dir, "techwatch_db.json")
         self.repository = JsonPostRepository(db_path=self.db_path)
-        self.use_case = LoadVeilleDataUseCase(self.repository)
+        self.use_case = LoadDataUseCase(self.repository)
 
     def tearDown(self):
         """Cleanup temporary files"""

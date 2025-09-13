@@ -5,17 +5,17 @@ import unittest
 from unittest.mock import Mock, MagicMock
 from datetime import date
 from src.domain.entities.post import Post
-from src.application.use_cases.veille_use_cases import LoadVeilleDataUseCase
-from src.application.dto.post_dto import PostDTO, VeilleResultDTO
+from src.application.use_cases.techwatch_use_cases import LoadDataUseCase
+from src.application.dto.post_dto import PostDTO, ResultDTO
 
 
-class TestLoadVeilleDataUseCase(unittest.TestCase):
-    """Tests for LoadVeilleDataUseCase use case"""
+class TestLoadDataUseCase(unittest.TestCase):
+    """Tests for LoadDataUseCase use case"""
 
     def setUp(self):
         """Setup mocks for tests"""
         self.mock_repository = Mock()
-        self.use_case = LoadVeilleDataUseCase(self.mock_repository)
+        self.use_case = LoadDataUseCase(self.mock_repository)
 
     def test_load_latest_success(self):
         """Test loading latest data successfully"""
@@ -31,7 +31,7 @@ class TestLoadVeilleDataUseCase(unittest.TestCase):
         result = self.use_case.load_latest()
 
         # Assert
-        self.assertIsInstance(result, VeilleResultDTO)
+        self.assertIsInstance(result, ResultDTO)
         self.assertEqual(len(result.posts), 2)
         self.assertEqual(result.total_count, 2)
         self.assertEqual(result.metadata, mock_metadata)
@@ -59,9 +59,9 @@ class TestLoadVeilleDataUseCase(unittest.TestCase):
         ]
         self.mock_repository.load_latest.return_value = (mock_posts, {})
 
-        # Act - This test would require full implementation of load_filtered
+        # Act - This test would require full implementation of execute_with_filters
         # For now, we test that the method exists
-        self.assertTrue(hasattr(self.use_case, 'load_filtered'))
+        self.assertTrue(hasattr(self.use_case, 'execute_with_filters'))
 
 
 if __name__ == '__main__':

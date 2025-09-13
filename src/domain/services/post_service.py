@@ -128,9 +128,9 @@ class PostAnalysisService:
         return dict(counter)
 
     @staticmethod
-    def count_by_date(posts: List[Post]) -> Dict[str, int]:
-        """Count posts by date (ISO string)"""
-        counter = Counter(post.date.isoformat() for post in posts if post.date)
+    def count_by_date(posts: List[Post]) -> Dict[date, int]:
+        """Count posts by date (datetime.date keys)"""
+        counter = Counter(post.date for post in posts if post.date)
         return dict(counter)
 
     @staticmethod

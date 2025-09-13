@@ -4,7 +4,7 @@ Unit tests for DTOs - DDD Hexagonal Architecture
 import unittest
 from datetime import date
 from src.domain.entities.post import Post
-from src.application.dto.post_dto import PostDTO, VeilleResultDTO
+from src.application.dto.post_dto import PostDTO, ResultDTO
 
 
 class TestPostDTO(unittest.TestCase):
@@ -58,8 +58,8 @@ class TestPostDTO(unittest.TestCase):
         self.assertEqual(entity.source, "DTO Source")
 
 
-class TestVeilleResultDTO(unittest.TestCase):
-    """Tests for VeilleResult DTO"""
+class TestResultDTO(unittest.TestCase):
+    """Tests for Result DTO"""
 
     def test_creation_with_posts(self):
         """Test creation with list of posts"""
@@ -69,7 +69,7 @@ class TestVeilleResultDTO(unittest.TestCase):
         ]
         metadata = {"execution_time": "2.5s", "sources_count": 5}
 
-        result = VeilleResultDTO(
+        result = ResultDTO(
             posts=posts,
             metadata=metadata,
             total_count=2
@@ -81,7 +81,7 @@ class TestVeilleResultDTO(unittest.TestCase):
 
     def test_creation_empty(self):
         """Test creation with empty result"""
-        result = VeilleResultDTO(
+        result = ResultDTO(
             posts=[],
             metadata={},
             total_count=0

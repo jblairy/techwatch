@@ -7,19 +7,18 @@ This guide explains how to install and launch the technology watch tool with its
 
 ## 📋 Prerequisites
 
-- **Python 3.10+** (tested with Python 3.13)
-- **pip** and **venv** installed
-- **Git** to clone the repository
 - **Linux System** (Ubuntu 20.04+, Debian 11+, or equivalent)
+- **Docker** (required for installation)
+- **Git** to clone the repository
 
-## 🔧 Automated Installation (Recommended)
+## 🔧 Installation (Docker Only)
 
-The installation script automates the entire process:
+The installation is fully automated and uses Docker for all dependencies and environment isolation. Manual installation is not supported.
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd veille
+cd techwatch
 
 # Launch automatic installation
 chmod +x scripts/install.sh
@@ -27,62 +26,13 @@ chmod +x scripts/install.sh
 ```
 
 ### What the installation script does:
-- ✅ **Virtual environment** Python 3.13 with dependency isolation
-- ✅ **Dependencies** Installation of all required libraries
-- ✅ **DDD Structure** Creation of `var/saves/` and `var/logs/` directories
-- ✅ **Launch scripts** Configuration for CLI and GUI
-- ✅ **Systemd services** Configuration for automatic mode
-- ✅ **Desktop icon** Integration into applications menu
-- ✅ **Validation** Tests of hexagonal architecture
-
-## 🛠️ Manual Installation
-
-### Step 1: Python Environment
-```bash
-# Check Python version
-python3 --version  # Must be 3.10+
-
-# Create virtual environment
-python3 -m venv .venv
-
-# Activate virtual environment
-source .venv/bin/activate  # ⚠️ Use 'source', not direct execution
-```
-
-### Step 2: Dependencies Installation
-```bash
-# Update pip
-pip install --upgrade pip
-
-# Install DDD architecture dependencies
-pip install -r requirements.txt
-```
-
-### Step 3: Data Structure (DDD Architecture)
-```bash
-# Create data structure according to hexagonal architecture
-mkdir -p var/saves      # JSON persistence (Infrastructure Layer)
-mkdir -p var/logs       # Application logs
-mkdir -p config         # Crawler configuration (Infrastructure)
-
-# Script permissions
-chmod +x scripts/*.sh
-chmod +x assets/veille-tech.desktop
-```
-
-### Step 4: Installation Validation
-```bash
-# Test hexagonal architecture imports
-python -c "
-from src.domain.entities.post import Post
-from src.application.use_cases.veille_use_cases import LoadVeilleDataUseCase
-from src.infrastructure.repositories.json_post_repository import JsonPostRepository
-print('✅ Hexagonal DDD architecture validated')
-"
-
-# Test unit tests
-python -m unittest tests.test_veille.TestPost -v
-```
+- ✅ **Builds the Docker image** and launches the GUI in a container
+- ✅ **Installs the launcher script** in `~/.local/bin/start_techwatch_gui.sh` (added to PATH if needed)
+- ✅ **Installs the icon** in `~/.local/share/icons/techwatch.png`
+- ✅ **Installs the desktop shortcut** in `~/.local/share/applications/techwatch.desktop`
+- ✅ **Updates the desktop application database**
+- ✅ **Creates `var/saves/` and `var/logs/` directories** for data and logs
+- ✅ **No system-wide files are modified. All changes are limited to the current user.**
 
 ## 🚀 Application Entry Points
 
@@ -90,8 +40,9 @@ The hexagonal DDD architecture offers several entry points according to your nee
 
 ### 1. Modern Graphical Interface (Recommended)
 ```bash
-# Launch CustomTkinter GUI with DDD architecture
-python gui_main.py
+# Launch via desktop shortcut (Techwatch in your menu)
+# Or directly:
+start_techwatch_gui.sh
 ```
 **Features:**
 - 🎨 Modern design with dark theme
@@ -99,49 +50,25 @@ python gui_main.py
 - 🔄 Integrated "Generate new data" button
 - 📱 Responsive interface with dynamic columns
 
-### 2. Hexagonal CLI Interface (New)
+### 2. Command Line Interface
 ```bash
-# New entry point respecting DDD architecture
-python main.py generate --days 7
-python main.py show --source <source_name>
-python main.py list-sources
+python main.py show                    # Show latest data
+python main.py show --days 7           # Filter by period
+python main.py show --source <source_name>   # Filter by source
+python main.py analyze                 # Analyze data
 ```
-**Commands:**
-- `generate`: Generate new technology watch data
-- `show`: Display saved data with filtering
-- `list-sources`: List all available sources
 
-### 3. Service Mode (Background)
+### 3. Console Service (Crawling)
 ```bash
-# Background service for automation
-python veille_service.py --interval 3600 --verbose
+python techwatch_service.py --days 7               # Crawl 7 days
+python techwatch_service.py --sources <source_name>      # Specific source
 ```
-**Features:**
-- 🔄 Automatic execution every hour
-- 📝 Detailed logging in `var/logs/`
-- 🛡️ Error management and recovery
-- 📊 Generation statistics
 
-## 🔧 System Configuration
-
-### Systemd Service (Linux)
-```bash
-# Copy service configuration
-sudo cp config/veille.service /etc/systemd/system/
-sudo systemctl daemon-reload
-
-# Enable and start service
-sudo systemctl enable veille.service
-sudo systemctl start veille.service
-
-# Check status
-sudo systemctl status veille.service
-```
+## 🔧 System Configuration (Optional)
 
 ### Desktop Integration
 ```bash
-# Install desktop icon
-cp assets/veille-tech.desktop ~/.local/share/applications/
+cp assets/techwatch.desktop ~/.local/share/applications/
 update-desktop-database ~/.local/share/applications/
 ```
 
@@ -149,38 +76,26 @@ update-desktop-database ~/.local/share/applications/
 
 ### Domain Layer Tests
 ```bash
-# Test business entities
 python -m unittest tests.unit.domain.test_post_entity
 python -m unittest tests.unit.domain.test_date_range
-
-# Test domain services
 python -m unittest tests.unit.domain.test_post_service
 ```
 
 ### Application Layer Tests
 ```bash
-# Test use cases
-python -m unittest tests.unit.application.test_veille_use_cases
-
-# Test DTOs
+python -m unittest tests.unit.application.test_use_cases
 python -m unittest tests.unit.application.test_post_dto
 ```
 
 ### Infrastructure Layer Tests
 ```bash
-# Test crawlers
 python -m unittest tests.unit.infrastructure.test_crawlers
-
-# Test repositories
 python -m unittest tests.integration.test_json_repository
 ```
 
 ### Complete Integration Tests
 ```bash
-# Full DDD architecture test
 python -m unittest tests.integration.test_ddd_integration
-
-# End-to-end functional tests
 python tests/run_tests.py
 ```
 
@@ -188,27 +103,15 @@ python tests/run_tests.py
 
 ### Memory and Performance
 ```bash
-# Monitor resource usage
-python -c "
-import psutil
-import sys
-print(f'Python version: {sys.version}')
-print(f'Available memory: {psutil.virtual_memory().total // 1024**3} GB')
-print(f'CPU cores: {psutil.cpu_count()}')
-"
-
-# Performance benchmark
-time python main.py generate --days 1 --source <source_name>
+python -c "import psutil, sys; print(f'Python version: {sys.version}'); print(f'Available memory: {psutil.virtual_memory().total // 1024**3} GB'); print(f'CPU cores: {psutil.cpu_count()}')"
+time python main.py show --days 1 --source <source_name>
 ```
 
 ### Data Generation Test
 ```bash
-# Quick generation test
-python main.py generate --days 1 --verbose
-
-# Check generated files
+python main.py show --days 1 --verbose
 ls -la var/saves/
-cat var/logs/veille_service.log | tail -20
+cat var/logs/techwatch_service.log | tail -20
 ```
 
 ## 🔍 Troubleshooting
@@ -217,73 +120,43 @@ cat var/logs/veille_service.log | tail -20
 
 **Import Error: Module not found**
 ```bash
-# Verify virtual environment activation
 which python
 pip list | grep customtkinter
-
-# Reinstall dependencies
 pip install -r requirements.txt --force-reinstall
 ```
 
 **Permission Error**
 ```bash
-# Fix script permissions
 chmod +x scripts/*.sh
-chmod +x assets/veille-tech.desktop
-
-# Fix directory permissions
+chmod +x assets/techwatch.desktop
 chmod 755 var/saves var/logs
 ```
 
 **Network Connection Issues**
 ```bash
-# Test crawler connectivity
-python -c "
-import requests
-response = requests.get('<source_url>')
-print(f'Status: {response.status_code}')
-"
+python -c "import requests; response = requests.get('<source_url>'); print(f'Status: {response.status_code}')"
 ```
 
 ### Log Analysis
 ```bash
-# View application logs
-tail -f var/logs/veille_service.log
-
-# View GUI logs
+tail -f var/logs/techwatch_service.log
 tail -f var/logs/gui_main.log
-
-# Debug mode
-python main.py generate --days 1 --verbose --debug
 ```
 
 ## 🚀 Quick Start
 
 ### First Use (5 minutes)
 ```bash
-# 1. Complete installation
 ./scripts/install.sh
-
-# 2. Generate first data
-python main.py generate --days 7
-
-# 3. Launch graphical interface
-python gui_main.py
-
-# 4. Consult results
+start_techwatch_gui.sh
 python main.py show
 ```
 
 ### Daily Usage
 ```bash
-# Quick update
-python main.py generate --days 1
-
-# Specific source consultation
+python main.py show --days 1
 python main.py show --source <source_name> --days 3
-
-# Launch GUI for detailed view
-python gui_main.py
+start_techwatch_gui.sh
 ```
 
 ## 📈 Architecture Benefits
@@ -303,6 +176,56 @@ python gui_main.py
 - **Error handling**: Graceful degradation for failed sources
 - **Logging**: Complete traceability of operations
 - **Validation**: Architecture verification at each launch
+
+## Automated Periodic Update (Cron)
+
+Techwatch supports automated periodic launching of the GUI via Docker using a cron job. This is managed by the install and uninstall scripts.
+
+### How it works
+- The install script accepts a flag `--autoupdate <minutes>` to enable periodic launching.
+- If provided, a cron job is created in `/etc/cron.d/techwatch-gui` to launch the GUI container every N minutes.
+- The uninstall script removes this cron job automatically.
+
+### Example commands
+- Install with auto-update every 5 minutes:
+  ```
+  bash scripts/install.sh --autoupdate 5
+  ```
+  or
+  ```
+  make install.autoupdate MINUTES=5
+  ```
+- Uninstall and remove the cron job:
+  ```
+  bash scripts/uninstall.sh
+  ```
+  or
+  ```
+  make uninstall
+  ```
+
+### Details
+- The cron job uses the current user's environment and launches the GUI container with all required variables.
+- No cron job is installed if the flag is omitted.
+- The cron job is robust and automatically cleaned up on uninstall.
+
+## 🧹 Uninstallation
+
+To completely remove the application and all user-level integrations, run:
+
+```bash
+bash scripts/uninstall.sh
+```
+
+This will:
+- Stop and remove the Docker container and image
+- Remove the desktop shortcut from `~/.local/share/applications/techwatch.desktop`
+- Remove the icon from `~/.local/share/icons/techwatch.png`
+- Remove the launcher script from `~/.local/bin/start_techwatch_gui.sh`
+- Optionally remove logs and saves from `var/logs` and `var/saves` in the project folder
+- Optionally remove the local Python virtual environment `.venv`
+
+No system-wide files are affected. All changes are limited to the current user.
 
 ---
 

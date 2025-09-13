@@ -13,14 +13,14 @@ from typing import List, Optional
 import argparse
 
 # Imports from the new hexagonal architecture
-from src.application.use_cases.veille_use_cases import SaveVeilleDataUseCase, AnalyzeVeilleDataUseCase
+from src.application.use_cases.techwatch_use_cases import SaveDataUseCase, AnalyzeDataUseCase
 from src.application.dto.post_dto import PostDTO
 from src.infrastructure.repositories.json_post_repository import JsonPostRepository
 from src.infrastructure.adapters.crawler_adapter import FileCrawlerRepository
 
 # Legacy imports for transition (to be migrated progressively)
 from src.infrastructure.factories.crawler_factory import CrawlerFactory
-from src.application.services.veille_service import TechWatchService
+from src.application.services.techwatch_service import TechWatchService
 from src.presentation.cli.console_renderer import ConsoleRenderer
 from src.infrastructure.services.save_service import SaveService
 from src.domain.entities.post import Post
@@ -36,7 +36,7 @@ except ImportError:
 class TechWatchConsoleService:
     """
     Console service for automatic crawling and unified JSON database update.
-    This service now writes all crawled articles to a single file (veille_db.json).
+    This service now writes all crawled articles to a single file (techwatch_db.json).
     Notifications and statistics are based on this unified source.
     """
 
@@ -52,7 +52,7 @@ class TechWatchConsoleService:
         all_crawlers = self.crawler_factory.get_all_crawlers()
 
         # Services
-        self.veille_service = TechWatchService(crawlers=all_crawlers, renderer=self.console_renderer)
+        self.techwatch_service = TechWatchService(crawlers=all_crawlers, renderer=self.console_renderer)
         self.json_repo = JsonPostRepository()
 
         # Session statistics
@@ -66,23 +66,24 @@ class TechWatchConsoleService:
         }
 
     def setup_logging(self):
-        """Logging configuration for the console service"""
+        """Logging configuration for the console service (file only, no console)"""
         os.makedirs('var/logs', exist_ok=True)
-
-        # Main configuration
+        log_file = 'var/logs/techwatch_service.log'
+        # Remove all handlers if already set
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('var/logs/veille_service.log'),
-                logging.StreamHandler() if not self.silent_mode else logging.NullHandler()
+                logging.FileHandler(log_file)
             ]
         )
 
         self.logger = logging.getLogger(__name__)
         self.logger.info("=== Starting technology watch console service ===")
 
-    def run_veille(self, days_back: Optional[int] = None, sources: Optional[List[str]] = None) -> bool:
+    def run_techwatch(self, days_back: Optional[int] = None, sources: Optional[List[str]] = None) -> bool:
         """
         Launch a complete watch session and update the unified database.
 
@@ -109,7 +110,7 @@ class TechWatchConsoleService:
             date_range = DateRange(start_date=start_date, end_date=end_date)
 
             # Launch crawling
-            posts = self.veille_service.fetch_posts_in_range(date_range, sources)
+            posts = self.techwatch_service.fetch_posts_in_range(date_range, sources)
 
             self.session_stats['articles_found'] = len(posts)
             available_sources = self.crawler_factory.get_available_sources()
@@ -119,9 +120,9 @@ class TechWatchConsoleService:
                 # Save results to the unified database
                 success = self.json_repo.save(posts)
                 if success:
-                    self.logger.info(f"Results saved to veille_db.json")
+                    self.logger.info(f"Results saved to techwatch_db.json")
                 else:
-                    self.logger.error(f"Error saving results to veille_db.json")
+                    self.logger.error(f"Error saving results to techwatch_db.json")
 
                 # Check for new articles
                 new_articles_count = self.check_for_new_articles(posts)
@@ -150,7 +151,7 @@ class TechWatchConsoleService:
         Uses a simple hash based on title + URL for detection.
         """
         try:
-            # Load all existing articles from veille_db.json
+            # Load all existing articles from techwatch_db.json
             existing_posts, _ = self.json_repo.load_latest()
             existing_hashes = set(f"{post.title}|{post.url}" for post in existing_posts)
 
@@ -195,33 +196,6 @@ class TechWatchConsoleService:
             self.logger.info(f"Sources crawled: {self.session_stats['sources_crawled']}")
             self.logger.info(f"Articles found: {self.session_stats['articles_found']}")
 
-    def run_continuous_mode(self, interval_hours: int = 1, days_back: int = None):
-        """
-        Continuous mode - launch watch at regular intervals.
-        Used by systemd service.
-        """
-        import time
-
-        self.logger.info(f"Continuous mode activated - watch every {interval_hours}h")
-
-        while True:
-            try:
-                self.logger.info("--- Starting automatic watch cycle ---")
-                success = self.run_veille(days_back=days_back)
-
-                if success:
-                    self.logger.info("Cycle completed successfully")
-                else:
-                    self.logger.warning("Cycle completed with errors")
-
-            except Exception as e:
-                self.logger.error(f"Error in continuous cycle: {e}", exc_info=True)
-
-            # Wait before next cycle
-            sleep_seconds = interval_hours * 3600
-            self.logger.info(f"Waiting {interval_hours}h before next cycle...")
-            time.sleep(sleep_seconds)
-
 def main():
     """Entry point of the console service"""
     parser = argparse.ArgumentParser(description="Technology watch console service")
@@ -237,17 +211,6 @@ def main():
         help="Specific sources to crawl (all by default)"
     )
     parser.add_argument(
-        "--continuous",
-        action="store_true",
-        help="Continuous mode for systemd service"
-    )
-    parser.add_argument(
-        "--interval",
-        type=int,
-        default=1,
-        help="Interval in hours for continuous mode (default: 1)"
-    )
-    parser.add_argument(
         "--silent",
         action="store_true",
         help="Silent mode (no console output)"
@@ -259,25 +222,18 @@ def main():
     service = TechWatchConsoleService(silent_mode=args.silent)
 
     try:
-        if args.continuous:
-            # Continuous mode for systemd service
-            service.run_continuous_mode(
-                interval_hours=args.interval,
-                days_back=args.days
-            )
-        else:
-            # One-time mode
-            success = service.run_veille(
-                days_back=args.days,
-                sources=args.sources
-            )
+        # One-time mode uniquement
+        success = service.run_techwatch(
+            days_back=args.days,
+            sources=args.sources
+        )
 
-            if success:
-                print(f"✅ Watch completed successfully - {service.session_stats['articles_found']} articles found")
-                sys.exit(0)
-            else:
-                print("❌ Watch completed with errors")
-                sys.exit(1)
+        if success:
+            print(f"✅ Watch completed successfully - {service.session_stats['articles_found']} articles found")
+            sys.exit(0)
+        else:
+            print("❌ Watch completed with errors")
+            sys.exit(1)
 
     except KeyboardInterrupt:
         service.logger.info("Stop requested by user")

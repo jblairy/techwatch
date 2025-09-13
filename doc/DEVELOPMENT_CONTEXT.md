@@ -29,7 +29,7 @@ python main.py show --source <source_name> --days 7
 src/
 │   │   └── post.py         # Post entity with business logic
 # Service testing
-python veille_service.py --verbose
+python techwatch_service.py --verbose
 │   │   └── post_repository.py
 └── presentation/          # 🖥️ User Interfaces
 ## 🚀 Execution Modes
@@ -45,7 +45,7 @@ python veille_service.py --verbose
 - **Target**: Developers, CI/CD automation
 9. **A List Apart** - Web standards and best practices
 ### 3. Service Mode
-- **Launch**: `python veille_service.py`
+- **Launch**: `python techwatch_service.py`
 - **Features**: Background execution, scheduled tasks
 - **Target**: Production servers, automated monitoring
 13. **Freek Van der Herten** - PHP and Laravel expertise
@@ -79,9 +79,9 @@ python veille_service.py --verbose
 └── PostService (domain services)
 
 🚀 Application (Orchestration)
-├── Use Cases (LoadVeilleDataUseCase)
-├── DTOs (PostDTO, VeilleResultDTO)
-└── Application Services (VeilleService)
+├── Use Cases (LoadDataUseCase)
+├── DTOs (PostDTO, ResultDTO)
+└── Application Services (TechwatchService)
 
 🔧 Infrastructure (Technical)
 ├── Crawlers (17 external sources)
@@ -146,21 +146,18 @@ pip install -r requirements.txt
 ### Deployment Structure
 ```
 scripts/               # Launch scripts
-├── start_veille.sh      # Graphical interface
-└── start_veille_console.sh # Console version
-
-config/                # Service configuration
-├── veille.service       # System service
-└── veille-user.service  # User service
+├── install.sh      # Install script
+└── start_techwatch_gui.sh # Script that run GUI
+└── uninstall.sh # Uninstall script
 
 assets/                # Resources
-└── veille-tech.desktop  # Application file
+└── techwatch.desktop  # Application file
 
 var/                   # Runtime data
 ├── logs/                # Centralized logs
 │   ├── gui_main.log         # Main interface logs
 │   ├── gui_events.log       # Interface events
-│   └── veille_service.log   # Console DDD logs
+│   └── techwatch_service.log   # Console DDD logs
 └── saves/               # Automatic saves
     ├── *.json              # Structured format
     ├── *.csv               # Spreadsheet format
@@ -196,9 +193,8 @@ tests/
 ```
 
 ### Debugging and Monitoring
-- **Real-time logs**: `tail -f var/logs/veille_service.log`
+- **Real-time logs**: `tail -f var/logs/techwatch_service.log`
 - **Error search**: `grep -i error var/logs/*.log`
-- **Service status**: `systemctl status veille.service`
 - **Save verification**: Check contents of `var/saves/`
 
 ### DDD Best Practices
@@ -213,7 +209,7 @@ tests/
 ## Project Architecture
 - Hexagonal (clean) architecture: domain, application, infrastructure, presentation layers
 - Dependency injection for repositories/services
-- Unified data source: all articles in `var/saves/veille_db.json`
+- Unified data source: all articles in `var/saves/techwatch_db.json`
 - Modern GUI (CustomTkinter), CLI, and service modes
 
 ## Best Practices
@@ -237,6 +233,79 @@ tests/
 
 ## Known Issues & Solutions
 - See `ENCOUNTERED_ISSUES.md` for technical problems and lessons learned
+
+---
+
+# Wayland and X11 Compatibility Issues (GUI Docker)
+
+## Context
+The Techwatch GUI is launched in a Docker container and relies on X11 for graphical display. Modern Linux systems may use either X11 (Xorg) or Wayland as their display server protocol.
+
+## Problem Description
+### X11 (Xorg)
+- The GUI container accesses the host's X11 server via the DISPLAY variable and the /tmp/.X11-unix socket.
+- This setup works natively on X11 systems, allowing graphical applications in Docker to display windows on the host.
+
+### Wayland
+- Wayland is a newer protocol, replacing X11 in many distributions (e.g., GNOME, KDE).
+- Applications expecting X11 must use XWayland, a compatibility layer that emulates X11 on top of Wayland.
+- When launching via a .desktop file, environment variables (DISPLAY, XAUTHORITY, DBUS_SESSION_BUS_ADDRESS, etc.) may not be correctly inherited, causing the GUI to fail to display or notifications to not appear.
+- Wayland increases isolation for security, which can block Docker containers from accessing the graphical session or DBUS notifications.
+
+## Symptoms
+- GUI does not appear when launched via .desktop, but works from a terminal.
+- notify-send notifications do not show up via .desktop, but work in a terminal.
+- Environment variables are not expanded or are missing in the .desktop context.
+
+## Solution
+- Use a .desktop Exec line that launches the script via bash -c, ensuring all environment variables are expanded and inherited from the user session:
+  ```
+  Exec=bash -c 'TECHWATCH_PROJECT_DIR="$HOME/techwatch" XAUTHORITY="$XAUTHORITY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" DISPLAY="$DISPLAY" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" $HOME/techwatch/scripts/start_techwatch_gui.sh'
+  ```
+- This ensures the Docker container receives the correct graphical and DBUS context, making the GUI and notifications work under both X11 and Wayland (with XWayland).
+
+## References
+- https://wayland.freedesktop.org/
+- https://wiki.archlinux.org/title/Wayland
+- https://linuxfr.org/news/wayland-le-remplacant-de-xorg
+
+---
+
+*This section documents the compatibility issues and solutions for running the Techwatch GUI Docker container under X11 and Wayland environments. Last updated: September 2025.*
+
+## Cron Job Architecture & Auto-Update Feature
+
+### Concept
+Techwatch can be configured to auto-launch the GUI container at a regular interval using a cron job. This is managed via the install script and Makefile.
+
+### How it works
+- The install script supports a flag `--autoupdate <minutes>` to enable periodic launching.
+- If provided, a cron job is created in `/etc/cron.d/techwatch-gui` to launch the GUI container every N minutes.
+- The uninstall script removes this cron job automatically.
+
+### Usage
+- Install with auto-update every 5 minutes:
+  ```
+  bash scripts/install.sh --autoupdate 5
+  ```
+  or
+  ```
+  make install.autoupdate MINUTES=5
+  ```
+- Uninstall and remove the cron job:
+  ```
+  bash scripts/uninstall.sh
+  ```
+  or
+  ```
+  make uninstall
+  ```
+
+### Technical Details
+- The cron job is written to `/etc/cron.d/techwatch-gui` and uses the current user's environment.
+- The frequency is fully configurable via the flag or Makefile variable.
+- No cron job is installed if the flag is omitted.
+- The cron job is robust and automatically removed on uninstall.
 
 ---
 
